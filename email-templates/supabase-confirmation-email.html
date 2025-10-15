@@ -1,0 +1,293 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="https://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E.ON Registrierung bestätigen</title>
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    .gradient {
+      background: #E91A0B;
+      background-image: linear-gradient(to bottom right, #98137C, #E91A0B, #E91A0B, transparent);
+      background-position: top left;
+      background-size: 250px 250px;
+      background-repeat: no-repeat;
+      width: 100%;
+      height: 100%;
+      display: inline-block;
+    }
+
+    body, p, td, span, div, h1, h2, h3, a {
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
+    }
+    
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      -webkit-font-smoothing: antialiased;
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
+    }
+    
+    * {
+      -ms-text-size-adjust: 100%;
+    }
+    
+    table, td, th {
+      mso-table-lspace: 0 !important;
+      mso-table-rspace: 0 !important;
+      border-collapse: collapse;
+    }
+    
+    img {
+      border: 0;
+      outline: 0;
+      line-height: 100%;
+      text-decoration: none;
+      -ms-interpolation-mode: bicubic;
+    }
+    
+    a {
+      text-decoration: none;
+    }
+    
+    a:hover {
+      text-decoration: underline !important;
+    }
+    
+    a.button {
+      font-weight: 550;
+      display: inline-block;
+      box-sizing: border-box;
+      border-radius: 8px;
+      background-color: #E91A0B;
+      padding: 12px 40px;
+      font-size: 16px;
+      line-height: 24px;
+      color: #ffffff !important;
+      text-align: center;
+      text-decoration: none;
+    }
+    
+    a.button:hover {
+      background-color: #D41607 !important;
+      text-decoration: none !important;
+    }
+    
+    @media (max-width: 620px) {
+      .mobile-padding {
+        padding: 20px 15px !important;
+      }
+      .mobile-text {
+        font-size: 16px !important;
+        line-height: 20px !important;
+      }
+    }
+  </style>
+</head>
+
+<body style="margin: 0; padding: 0; background-color: #ffffff; font-family: 'Inter', Arial, Helvetica, sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff;">
+    <tr>
+      <td align="center">
+        <table width="640" style="max-width: 640px; width: 100%;" border="0" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding: 20px 0;">
+              
+               Header with Gradient 
+              <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background-color: #efebe5; padding: 10px 20px; text-align: center;">
+                    <p style="margin: 0; font-size: 11px; color: #333333;">
+                      <span style="color: #EA1B0A; font-weight: 700;">Im Browser öffnen</span>
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="gradient" style="background: #E91A0B; background-image: linear-gradient(to bottom right, #98137C, #E91A0B, #E91A0B, transparent); padding: 30px 20px;">
+                      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="width: 60%;">
+                            <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #ffffff; line-height: 1.3;">
+                              Willkommen bei E.ON<br/>Ihre Registrierung
+                            </h1>
+                          </td>
+                          <td style="width: 40%; text-align: right;">
+                            <img src="https://www.eon.de/content/dam/eon/eon-de-zwei/images/logos/eon-logo.svg" alt="E.ON Logo" width="80" style="height: auto;" />
+                          </td>
+                        </tr>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              
+               Main Content 
+              <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #ffffff;">
+                <tr>
+                  <td class="mobile-padding" style="padding: 40px 20px;">
+                    <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      Sehr geehrte Damen und Herren,
+                    </p>
+                    
+                    <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      vielen Dank für Ihre Registrierung bei E.ON. Um Ihr Konto zu aktivieren und den Zugang zu Ihrem persönlichen Kundenbereich freizuschalten, bestätigen Sie bitte Ihre E-Mail-Adresse.
+                    </p>
+                    
+                    <p style="margin: 0 0 30px 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      Klicken Sie einfach auf den Button unten:
+                    </p>
+                    
+                     Confirmation Button 
+                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td align="center" style="padding: 20px 0;">
+                          <a href="{{ .ConfirmationURL }}" class="button" style="display: inline-block; box-sizing: border-box; border-radius: 8px; background-color: #E91A0B; padding: 12px 40px; font-size: 16px; font-weight: 550; line-height: 24px; color: #ffffff; text-align: center; text-decoration: none;">
+                            E-Mail-Adresse bestätigen
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <p style="margin: 30px 0 20px 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      <strong>Falls der Button nicht funktioniert, kopieren Sie bitte diesen Link in Ihren Browser:</strong>
+                    </p>
+                    
+                    <p style="margin: 0 0 30px 0; font-size: 12px; line-height: 18px; color: #666666; word-break: break-all;">
+                      {{ .ConfirmationURL }}
+                    </p>
+                    
+                    <p style="margin: 0 0 10px 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      Nach der Bestätigung können Sie sich mit Ihren Zugangsdaten anmelden und haben Zugriff auf:
+                    </p>
+                    
+                    <ul style="margin: 0 0 30px 0; padding-left: 20px; font-size: 14px; line-height: 21px; color: #000000;">
+                      <li>Ihre Rechnungen und Verträge</li>
+                      <li>Verbrauchsübersicht</li>
+                      <li>Zahlungsmethoden verwalten</li>
+                      <li>Persönliche Daten aktualisieren</li>
+                    </ul>
+                    
+                    <p style="margin: 0 0 10px 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      <strong>Sie haben sich nicht registriert?</strong>
+                    </p>
+                    
+                    <p style="margin: 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      Falls Sie diese E-Mail irrtümlich erhalten haben, können Sie sie einfach ignorieren. Ihr Konto wird nicht aktiviert, solange Sie nicht auf den Bestätigungslink klicken.
+                    </p>
+                    
+                    <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 21px; color: #000000;">
+                      Mit freundlichen Grüßen<br/>
+                      <strong>Ihr E.ON Team</strong>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              
+               Social Media Footer 
+              <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #efebe5;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="width: 50%; vertical-align: middle;">
+                          <p style="margin: 0; font-size: 16px; font-weight: 700; color: #333333;">
+                            Folgen Sie uns auf
+                          </p>
+                        </td>
+                        <td style="width: 50%; text-align: right; vertical-align: middle;">
+                          <a href="https://www.facebook.com/EonEnergieDe" style="margin-left: 10px;">
+                            <img src="https://image.email.eon.de/lib/fe4315707564057d771074/m/1/ba3b1c23-2417-402a-82e8-9972df6dd545.png" alt="Facebook" width="35" height="35" style="display: inline-block;" />
+                          </a>
+                          <a href="https://www.instagram.com/eon_deutschland/" style="margin-left: 10px;">
+                            <img src="https://image.email.eon.de/lib/fe4315707564057d771074/m/1/c657a0a6-c13f-4da7-9434-38b12bc90e79.png" alt="Instagram" width="35" height="35" style="display: inline-block;" />
+                          </a>
+                          <a href="https://www.youtube.com/user/Eon" style="margin-left: 10px;">
+                            <img src="https://image.email.eon.de/lib/fe4315707564057d771074/m/1/2d4e7c58-4e02-4020-8290-3780ca064a95.png" alt="YouTube" width="42" height="30" style="display: inline-block;" />
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+               Legal Footer 
+              <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-bottom: 3px solid #E91808;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="width: 50%; vertical-align: top; padding-right: 20px; border-bottom: 1px solid #EFEBE5; padding-bottom: 20px;">
+                          <p style="margin: 0 0 15px 0; font-size: 12px; line-height: 140%; color: #333333;">
+                            <strong>E.ON Energie Deutschland GmbH</strong><br/>
+                            Arnulfstraße 203<br/>
+                            80634 München
+                          </p>
+                          <p style="margin: 0; font-size: 12px; line-height: 140%; color: #333333;">
+                            <strong>E.ON Energie Deutschland GmbH</strong><br/>
+                            Sitz/Registered Office München<br/>
+                            Amtsgericht/District Court München<br/>
+                            HRB 209327 St.-Nr. 143/134/00981<br/>
+                            Ust.-IdNr. DE259922663
+                          </p>
+                        </td>
+                        <td style="width: 50%; vertical-align: top; padding-left: 20px; border-bottom: 1px solid #EFEBE5; padding-bottom: 20px;">
+                          <p style="margin: 0 0 15px 0; font-size: 12px; line-height: 140%; color: #333333;">
+                            <strong>Vorsitzender des Aufsichtsrats:</strong><br/>
+                            Dr. Marc Spieker
+                          </p>
+                          <p style="margin: 0 0 15px 0; font-size: 12px; line-height: 140%; color: #333333;">
+                            <strong>Geschäftsführung:</strong><br/>
+                            Dr. Filip Thon (Vorsitzender/CEO)<br/>
+                            Dr. Veronika Bunk-Sanderson<br/>
+                            Marc Dönges<br/>
+                            Dr. Martin Endress<br/>
+                            Dr. Philipp Klenner<br/>
+                            Tobias Mitter
+                          </p>
+                          <p style="margin: 0; font-size: 12px; line-height: 140%; color: #333333;">
+                            <strong>Verantwortlicher gemäß §18 Abs. 2 MStV:</strong><br/>
+                            Peter Walter, Arnulfstraße 203, 80634 München
+                          </p>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colspan="2" style="padding-top: 20px;">
+                          <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                            <tr>
+                              <td style="width: 50%;">
+                                <p style="margin: 0; font-size: 12px; line-height: 140%; color: #333333;">
+                                  <a href="https://www.eon.de/de/pk/service/kontakt.html" style="color: #000; font-weight: 700; text-decoration: underline; margin-right: 15px;">Kontakt</a>
+                                  <a href="https://www.eon.de/de/pk/impressum.html" style="color: #000; font-weight: 700; text-decoration: underline; margin-right: 15px;">Impressum</a>
+                                  <a href="https://www.eon.de/de/pk/datenschutz.html" style="color: #000; font-weight: 700; text-decoration: underline;">Datenschutz</a>
+                                </p>
+                              </td>
+                              <td style="width: 50%; text-align: right;">
+                                <p style="margin: 0; font-size: 12px; line-height: 140%; color: #958b89;">
+                                  © 2025 E.ON Energie Deutschland GmbH
+                                </p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
