@@ -1,21 +1,42 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
-    const { data: users, error } = await supabase.from("profiles").select(`
-        *,
-        payment_methods (*),
-        bills (*),
-        user_activity_log (*)
-      `)
+    const { data: profiles, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false })
 
     if (error) throw error
 
+    // Fetch related data for each user
+    const usersWithData = await Promise.all(
+      profiles.map(async (profile) => {
+        const { data: paymentMethods } = await supabase.from("payment_methods").select("*").eq("user_id", profile.id)
+
+        const { data: bills } = await supabase.from("bills").select("*").eq("user_id", profile.id)
+
+        const { data: activityLog } = await supabase
+          .from("user_activity_log")
+          .select("*")
+          .eq("user_id", profile.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+
+        return {
+          ...profile,
+          payment_methods: paymentMethods || [],
+          bills: bills || [],
+          user_activity_log: activityLog || [],
+        }
+      }),
+    )
+
     // Convert to CSV
-    const csv = convertToCSV(users)
+    const csv = convertToCSV(usersWithData)
 
     return new NextResponse(csv, {
       headers: {
@@ -24,6 +45,7 @@ export async function GET() {
       },
     })
   } catch (error: any) {
+    console.error("[v0] Export users error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
