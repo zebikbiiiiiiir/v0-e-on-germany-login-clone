@@ -19,5 +19,9 @@ export default async function PaymentMethodsPage() {
     .eq("user_id", user.id)
     .order("is_default", { ascending: false })
 
-  return <PaymentMethodsContent paymentMethods={paymentMethods || []} userId={user.id} />
+  return (
+    <div className="max-w-7xl mx-auto">
+      <PaymentMethodsContent paymentMethods={paymentMethods || []} userId={user.id} />
+    </div>
+  )
 }

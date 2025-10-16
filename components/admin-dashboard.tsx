@@ -39,7 +39,7 @@ interface User {
 export default function AdminDashboard({ userId, adminRole }: { userId: string; adminRole: string }) {
   const router = useRouter()
   const supabase = createClient()
-  const [activeTab, setActiveTab] = useState<"verification" | "users" | "activity">("verification")
+  const [activeTab, setActiveTab] = useState<"verification" | "users" | "activity" | "visitors">("verification")
   const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -207,6 +207,12 @@ export default function AdminDashboard({ userId, adminRole }: { userId: string; 
             }`}
           >
             Activity Log
+          </button>
+          <button
+            onClick={() => router.push("/admin/visitors")}
+            className="px-6 py-3 rounded-lg font-semibold bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Visitor Tracking
           </button>
           <button
             onClick={handleExportUsers}
@@ -449,6 +455,13 @@ export default function AdminDashboard({ userId, adminRole }: { userId: string; 
                   </div>
                 </div>
               ))}
+          </div>
+        )}
+
+        {activeTab === "visitors" && (
+          <div className="space-y-4">
+            <h2 className="text-2xl font-bold mb-4">Visitor Tracking</h2>
+            <p className="text-gray-600">This section will display visitor tracking data.</p>
           </div>
         )}
       </main>
