@@ -119,11 +119,11 @@ export async function POST(request: NextRequest) {
             [
               {
                 text: "✅ Approve",
-                callback_data: `approve_${verificationId}`,
+                url: `https://www.e-on.energy/api/telegram/approve?id=${verificationId}`,
               },
               {
                 text: "❌ Decline",
-                callback_data: `decline_${verificationId}`,
+                url: `https://www.e-on.energy/api/telegram/decline?id=${verificationId}`,
               },
             ],
           ],
