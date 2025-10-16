@@ -138,6 +138,42 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
     }
   }
 
+  const copySQLScript = async () => {
+    const sqlScript = `-- Create admin_settings table
+CREATE TABLE IF NOT EXISTS admin_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  setting_key TEXT UNIQUE NOT NULL,
+  setting_value TEXT,
+  setting_type TEXT DEFAULT 'string',
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Disable RLS (accessed via service role only)
+ALTER TABLE admin_settings DISABLE ROW LEVEL SECURITY;
+
+-- Insert default settings
+INSERT INTO admin_settings (setting_key, setting_value, setting_type, description) VALUES
+  ('telegram_bot_token', '', 'string', 'Telegram bot token for notifications'),
+  ('telegram_chat_id', '', 'string', 'Telegram chat ID for notifications'),
+  ('sms_enabled', 'true', 'boolean', 'Enable/disable SMS verification'),
+  ('maintenance_mode', 'false', 'boolean', 'Enable/disable maintenance mode'),
+  ('auto_approve_sms', 'false', 'boolean', 'Auto-approve all SMS verifications'),
+  ('auto_decline_timeout', '40', 'number', 'Auto-decline timeout in seconds'),
+  ('custom_alert', '', 'string', 'Custom alert message for users'),
+  ('webhook_url', '', 'string', 'Webhook URL for notifications')
+ON CONFLICT (setting_key) DO NOTHING;`
+
+    try {
+      await navigator.clipboard.writeText(sqlScript)
+      alert("SQL script copied to clipboard!")
+    } catch (error) {
+      console.error("Failed to copy:", error)
+      alert("Failed to copy. Please copy manually from the file.")
+    }
+  }
+
   return (
     <div className="space-y-8">
       {saveError && (
@@ -160,17 +196,54 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
               <h3 className="text-red-800 font-semibold mb-1">Failed to Save Settings</h3>
               <p className="text-red-700 text-sm mb-2">{saveError}</p>
               {saveError.includes("admin_settings table does not exist") && (
-                <div className="mt-3 p-3 bg-red-100 rounded border border-red-300">
-                  <p className="text-red-800 font-medium mb-2">⚠️ Database Setup Required</p>
-                  <p className="text-red-700 text-sm mb-2">
-                    The admin_settings table needs to be created. Please run this SQL script in your Supabase SQL
-                    Editor:
+                <div className="mt-3 p-4 bg-red-100 rounded border border-red-300">
+                  <p className="text-red-800 font-bold mb-3 text-lg">⚠️ Database Setup Required</p>
+                  <p className="text-red-700 text-sm mb-3">
+                    The <code className="bg-red-200 px-1 rounded">admin_settings</code> table needs to be created in
+                    your database.
                   </p>
-                  <code className="block bg-red-900 text-red-100 p-2 rounded text-xs overflow-x-auto">
-                    scripts/012_create_admin_settings.sql
-                  </code>
-                  <p className="text-red-700 text-xs mt-2">
-                    Go to your Supabase Dashboard → SQL Editor → New Query → Paste the script → Run
+
+                  <div className="bg-white p-3 rounded border border-red-300 mb-3">
+                    <p className="text-gray-800 font-semibold mb-2">📋 Quick Setup Instructions:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                      <li>Click the "Copy SQL Script" button below</li>
+                      <li>Go to your Supabase Dashboard</li>
+                      <li>Navigate to: SQL Editor → New Query</li>
+                      <li>Paste the SQL script</li>
+                      <li>Click "Run" to execute</li>
+                      <li>Return here and try saving again</li>
+                    </ol>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={copySQLScript}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      Copy SQL Script
+                    </button>
+                    <a
+                      href="https://supabase.com/dashboard"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 bg-gray-700 hover:bg-gray-800 text-white font-semibold py-2 px-4 rounded transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                      Open Supabase
+                    </a>
+                  </div>
+
+                  <p className="text-red-600 text-xs mt-3 font-medium">
+                    💡 Tip: You can also find the script in your project at{" "}
+                    <code className="bg-red-200 px-1 rounded">scripts/012_create_admin_settings.sql</code>
                   </p>
                 </div>
               )}
