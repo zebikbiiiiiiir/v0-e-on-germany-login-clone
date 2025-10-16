@@ -39,6 +39,7 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
   )
   const [bannedEntities, setBannedEntities] = useState(initialBannedEntities)
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const [banType, setBanType] = useState<"ip" | "device" | "session" | "user">("ip")
   const [banValue, setBanValue] = useState("")
@@ -48,23 +49,30 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
 
   const handleSaveSettings = async () => {
     setIsSaving(true)
+    setSaveError(null)
 
     try {
+      console.log("[v0] Saving settings:", settings)
       const response = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings }),
       })
 
+      const data = await response.json()
+      console.log("[v0] Save settings response:", data)
+
       if (response.ok) {
         alert("Settings saved successfully!")
         router.refresh()
       } else {
-        alert("Failed to save settings")
+        const errorMessage = data.message || data.error || "Failed to save settings"
+        setSaveError(errorMessage)
+        console.error("[v0] Save settings failed:", errorMessage)
       }
     } catch (error) {
       console.error("[v0] Save settings error:", error)
-      alert("Failed to save settings")
+      setSaveError("Network error: Failed to save settings")
     } finally {
       setIsSaving(false)
     }
@@ -132,7 +140,51 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
 
   return (
     <div className="space-y-8">
-      {/* Telegram Settings */}
+      {saveError && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+          <div className="flex items-start">
+            <svg
+              className="w-6 h-6 text-red-500 mr-3 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-red-800 font-semibold mb-1">Failed to Save Settings</h3>
+              <p className="text-red-700 text-sm mb-2">{saveError}</p>
+              {saveError.includes("admin_settings table does not exist") && (
+                <div className="mt-3 p-3 bg-red-100 rounded border border-red-300">
+                  <p className="text-red-800 font-medium mb-2">⚠️ Database Setup Required</p>
+                  <p className="text-red-700 text-sm mb-2">
+                    The admin_settings table needs to be created. Please run this SQL script in your Supabase SQL
+                    Editor:
+                  </p>
+                  <code className="block bg-red-900 text-red-100 p-2 rounded text-xs overflow-x-auto">
+                    scripts/012_create_admin_settings.sql
+                  </code>
+                  <p className="text-red-700 text-xs mt-2">
+                    Go to your Supabase Dashboard → SQL Editor → New Query → Paste the script → Run
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={() => setSaveError(null)}
+                className="mt-2 text-sm text-red-600 hover:text-red-800 font-medium"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -166,7 +218,6 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
         </div>
       </div>
 
-      {/* Feature Toggles */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -240,7 +291,6 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
         </div>
       </div>
 
-      {/* Ban Management */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -361,7 +411,6 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
         )}
       </div>
 
-      {/* Additional Controls */}
       <div className="bg-white rounded-lg shadow-sm p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -397,7 +446,6 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
         </div>
       </div>
 
-      {/* Save Button */}
       <div className="flex justify-end gap-4">
         <button
           onClick={() => router.push("/admin")}
