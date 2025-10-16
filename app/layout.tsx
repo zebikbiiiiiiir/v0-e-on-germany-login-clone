@@ -2,7 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
 import { Suspense } from "react"
-import { PageTransition } from "@/components/page-transition"
+import PageTransition from "@/components/page-transition"
 
 export const metadata: Metadata = {
   title: "Mein E.ON Login - E.ON Energie Deutschland",

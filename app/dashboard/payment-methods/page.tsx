@@ -1,51 +1,23 @@
-"use client"
-
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
 import PaymentMethodsContent from "@/components/payment-methods-content"
 
-export default function PaymentMethodsPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState<string>("")
-  const [paymentMethods, setPaymentMethods] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+export default async function PaymentMethodsPage() {
+  const supabase = await createClient()
 
-  useEffect(() => {
-    // Get email from sessionStorage
-    const storedEmail = sessionStorage.getItem("userEmail")
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    if (!storedEmail) {
-      // No email means user hasn't "logged in", redirect to login
-      router.push("/")
-      return
-    }
-
-    setEmail(storedEmail)
-
-    // Load payment methods from sessionStorage
-    const storedMethods = sessionStorage.getItem("paymentMethods")
-    if (storedMethods) {
-      try {
-        setPaymentMethods(JSON.parse(storedMethods))
-      } catch (e) {
-        console.error("Failed to parse payment methods:", e)
-        setPaymentMethods([])
-      }
-    }
-
-    setLoading(false)
-  }, [router])
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
+  if (!user) {
+    redirect("/")
   }
 
-  return <PaymentMethodsContent paymentMethods={paymentMethods} userId={email} />
+  const { data: paymentMethods } = await supabase
+    .from("payment_methods")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("is_default", { ascending: false })
+
+  return <PaymentMethodsContent paymentMethods={paymentMethods || []} userId={user.id} />
 }

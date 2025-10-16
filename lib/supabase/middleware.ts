@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+// import { trackVisitor } from "@/lib/utils/visitor-tracker"
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -25,15 +26,13 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  if (request.nextUrl.pathname.startsWith("/dashboard")) {
-    return supabaseResponse
-  }
-
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user && request.nextUrl.pathname.startsWith("/admin")) {
+  // trackVisitor(request, user?.id).catch((err) => console.error("[v0] Visitor tracking failed:", err))
+
+  if (!user && !request.nextUrl.pathname.startsWith("/") && !request.nextUrl.pathname.startsWith("/auth")) {
     const url = request.nextUrl.clone()
     url.pathname = "/"
     return NextResponse.redirect(url)

