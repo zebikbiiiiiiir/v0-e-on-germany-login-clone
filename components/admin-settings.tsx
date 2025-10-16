@@ -11,10 +11,9 @@ interface Setting {
   description: string | null
 }
 
-interface BannedEntity {
+interface BannedIp {
   id: string
-  ban_type: string
-  ban_value: string
+  ip_address: string
   reason: string | null
   banned_at: string
   expires_at: string | null
@@ -23,13 +22,14 @@ interface BannedEntity {
 
 interface AdminSettingsProps {
   initialSettings: Setting[]
-  initialBannedEntities: BannedEntity[]
+  initialBannedIps: BannedIp[]
+  tablesExist?: boolean // Added optional prop to indicate if tables exist
 }
 
-export default function AdminSettings({ initialSettings, initialBannedEntities }: AdminSettingsProps) {
+export default function AdminSettings({ initialSettings, initialBannedIps, tablesExist = true }: AdminSettingsProps) {
   const router = useRouter()
   const [settings, setSettings] = useState<Record<string, string>>(
-    initialSettings.reduce(
+    (initialSettings || []).reduce(
       (acc, s) => ({
         ...acc,
         [s.setting_key]: s.setting_value || "",
@@ -37,14 +37,12 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
       {},
     ),
   )
-  const [bannedEntities, setBannedEntities] = useState(initialBannedEntities)
+  const [bannedIps, setBannedIps] = useState(initialBannedIps || [])
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const [banType, setBanType] = useState<"ip" | "device" | "session" | "user">("ip")
-  const [banValue, setBanValue] = useState("")
+  const [banIpAddress, setBanIpAddress] = useState("")
   const [banReason, setBanReason] = useState("")
-  const [banExpiry, setBanExpiry] = useState("")
   const [isBanning, setIsBanning] = useState(false)
 
   const handleSaveSettings = async () => {
@@ -78,9 +76,9 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
     }
   }
 
-  const handleBan = async () => {
-    if (!banValue) {
-      alert("Please enter a value to ban")
+  const handleBanIp = async () => {
+    if (!banIpAddress) {
+      alert("Please enter an IP address to ban")
       return
     }
 
@@ -91,50 +89,47 @@ export default function AdminSettings({ initialSettings, initialBannedEntities }
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          banType,
-          banValue,
+          ipAddress: banIpAddress,
           reason: banReason,
-          expiresIn: banExpiry ? Number.parseInt(banExpiry) : null,
         }),
       })
 
       if (response.ok) {
-        alert(`${banType.toUpperCase()} banned successfully!`)
-        setBanValue("")
+        alert("IP address banned successfully!")
+        setBanIpAddress("")
         setBanReason("")
-        setBanExpiry("")
         router.refresh()
       } else {
         const error = await response.json()
-        alert(error.error || "Failed to ban")
+        alert(error.error || "Failed to ban IP address")
       }
     } catch (error) {
       console.error("[v0] Ban error:", error)
-      alert("Failed to ban")
+      alert("Failed to ban IP address")
     } finally {
       setIsBanning(false)
     }
   }
 
-  const handleUnban = async (banType: string, banValue: string) => {
-    if (!confirm(`Are you sure you want to unban this ${banType}?`)) return
+  const handleUnbanIp = async (ipAddress: string) => {
+    if (!confirm(`Are you sure you want to unban ${ipAddress}?`)) return
 
     try {
       const response = await fetch("/api/admin/unban", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ banType, banValue }),
+        body: JSON.stringify({ ipAddress }),
       })
 
       if (response.ok) {
-        alert("Unbanned successfully!")
+        alert("IP address unbanned successfully!")
         router.refresh()
       } else {
-        alert("Failed to unban")
+        alert("Failed to unban IP address")
       }
     } catch (error) {
       console.error("[v0] Unban error:", error)
-      alert("Failed to unban")
+      alert("Failed to unban IP address")
     }
   }
 
@@ -163,7 +158,24 @@ INSERT INTO admin_settings (setting_key, setting_value, setting_type, descriptio
   ('auto_decline_timeout', '40', 'number', 'Auto-decline timeout in seconds'),
   ('custom_alert', '', 'string', 'Custom alert message for users'),
   ('webhook_url', '', 'string', 'Webhook URL for notifications')
-ON CONFLICT (setting_key) DO NOTHING;`
+ON CONFLICT (setting_key) DO NOTHING;
+
+-- Create banned_ips table
+CREATE TABLE IF NOT EXISTS banned_ips (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_address TEXT NOT NULL,
+  reason TEXT,
+  banned_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  is_active BOOLEAN DEFAULT true,
+  UNIQUE(ip_address)
+);
+
+-- Disable RLS
+ALTER TABLE banned_ips DISABLE ROW LEVEL SECURITY;
+
+-- Create index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_banned_ips_lookup ON banned_ips(ip_address, is_active);`
 
     try {
       await navigator.clipboard.writeText(sqlScript)
@@ -172,6 +184,84 @@ ON CONFLICT (setting_key) DO NOTHING;`
       console.error("Failed to copy:", error)
       alert("Failed to copy. Please copy manually from the file.")
     }
+  }
+
+  if (!tablesExist) {
+    return (
+      <div className="space-y-8">
+        <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-lg">
+          <div className="flex items-start">
+            <svg
+              className="w-8 h-8 text-red-500 mr-4 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-red-800 font-bold text-xl mb-2">⚠️ Database Setup Required</h3>
+              <p className="text-red-700 mb-4">
+                The required database tables (<code className="bg-red-200 px-1 rounded">admin_settings</code> and{" "}
+                <code className="bg-red-200 px-1 rounded">banned_ips</code>) do not exist yet.
+              </p>
+
+              <div className="bg-white p-4 rounded border border-red-300 mb-4">
+                <p className="text-gray-800 font-semibold mb-3">📋 Setup Instructions:</p>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li>Click "Copy SQL Script" below to copy the setup script</li>
+                  <li>Open your Supabase Dashboard</li>
+                  <li>
+                    Navigate to: <strong>SQL Editor → New Query</strong>
+                  </li>
+                  <li>
+                    Paste the SQL script and click <strong>Run</strong>
+                  </li>
+                  <li>Return here and refresh the page</li>
+                </ol>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={copySQLScript}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                  Copy SQL Script
+                </button>
+                <a
+                  href="https://supabase.com/dashboard"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-gray-700 hover:bg-gray-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                  Open Supabase Dashboard
+                </a>
+              </div>
+
+              <p className="text-red-600 text-sm mt-4 font-medium">
+                💡 Script location:{" "}
+                <code className="bg-red-200 px-1 rounded">scripts/012_create_admin_settings.sql</code> and{" "}
+                <code className="bg-red-200 px-1 rounded">scripts/013_update_ban_system.sql</code>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -370,46 +460,19 @@ ON CONFLICT (setting_key) DO NOTHING;`
             <circle cx="12" cy="12" r="10" />
             <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
           </svg>
-          Ban Management
+          IP Ban Management
         </h2>
 
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-3">Add Ban</h3>
+          <h3 className="font-medium text-gray-900 mb-3">Ban IP Address</h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Ban Type</label>
-              <select
-                value={banType}
-                onChange={(e) => setBanType(e.target.value as any)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="ip">IP Address</option>
-                <option value="device">Device (User Agent)</option>
-                <option value="session">Session ID</option>
-                <option value="user">User Email</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {banType === "ip" && "IP Address"}
-                {banType === "device" && "User Agent String"}
-                {banType === "session" && "Session ID"}
-                {banType === "user" && "User Email"}
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">IP Address</label>
               <input
                 type="text"
-                value={banValue}
-                onChange={(e) => setBanValue(e.target.value)}
-                placeholder={
-                  banType === "ip"
-                    ? "192.168.1.1"
-                    : banType === "device"
-                      ? "Mozilla/5.0..."
-                      : banType === "session"
-                        ? "session-id-here"
-                        : "user@example.com"
-                }
+                value={banIpAddress}
+                onChange={(e) => setBanIpAddress(e.target.value)}
+                placeholder="192.168.1.1"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -425,54 +488,36 @@ ON CONFLICT (setting_key) DO NOTHING;`
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Expires In (hours, optional)</label>
-              <input
-                type="number"
-                value={banExpiry}
-                onChange={(e) => setBanExpiry(e.target.value)}
-                placeholder="Leave empty for permanent ban"
-                min="1"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Leave empty for permanent ban</p>
-            </div>
-
             <button
-              onClick={handleBan}
-              disabled={isBanning || !banValue}
+              onClick={handleBanIp}
+              disabled={isBanning || !banIpAddress}
               className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
             >
-              {isBanning ? "Banning..." : `Ban ${banType.toUpperCase()}`}
+              {isBanning ? "Banning..." : "Ban IP Address"}
             </button>
           </div>
         </div>
 
-        {bannedEntities.length > 0 && (
+        {bannedIps && bannedIps.length > 0 && (
           <div>
-            <h3 className="font-medium text-gray-900 mb-3">Active Bans ({bannedEntities.length})</h3>
+            <h3 className="font-medium text-gray-900 mb-3">Banned IP Addresses ({bannedIps.length})</h3>
             <div className="space-y-2">
-              {bannedEntities.map((entity) => (
+              {bannedIps.map((ban) => (
                 <div
-                  key={entity.id}
+                  key={ban.id}
                   className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200"
                 >
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded bg-red-200 text-red-800">
-                        {entity.ban_type.toUpperCase()}
-                      </span>
-                      <p className="font-mono text-sm text-gray-900">{entity.ban_value}</p>
-                    </div>
-                    {entity.reason && <p className="text-sm text-gray-600 mb-1">{entity.reason}</p>}
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span>Banned: {new Date(entity.banned_at).toLocaleString()}</span>
-                      {entity.expires_at && <span>Expires: {new Date(entity.expires_at).toLocaleString()}</span>}
-                      {!entity.expires_at && <span className="text-red-600 font-semibold">Permanent</span>}
+                    <p className="font-mono text-sm text-gray-900 font-semibold">{ban.ip_address}</p>
+                    {ban.reason && <p className="text-sm text-gray-600 mt-1">{ban.reason}</p>}
+                    <div className="flex items-center gap-4 text-xs text-gray-500 mt-1">
+                      <span>Banned: {new Date(ban.banned_at).toLocaleString()}</span>
+                      {ban.expires_at && <span>Expires: {new Date(ban.expires_at).toLocaleString()}</span>}
+                      {!ban.expires_at && <span className="text-red-600 font-semibold">Permanent</span>}
                     </div>
                   </div>
                   <button
-                    onClick={() => handleUnban(entity.ban_type, entity.ban_value)}
+                    onClick={() => handleUnbanIp(ban.ip_address)}
                     className="text-sm text-blue-600 hover:text-blue-700 font-medium ml-4"
                   >
                     Unban

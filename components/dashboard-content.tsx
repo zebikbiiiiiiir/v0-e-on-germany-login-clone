@@ -26,9 +26,10 @@ interface DashboardContentProps {
   user: User
   profile: Profile | null
   bills: Bill[]
+  guessedName?: string | null
 }
 
-export default function DashboardContent({ user, profile, bills }: DashboardContentProps) {
+export default function DashboardContent({ user, profile, bills, guessedName }: DashboardContentProps) {
   const router = useRouter()
   const supabase = createClient()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -285,7 +286,7 @@ export default function DashboardContent({ user, profile, bills }: DashboardCont
           >
             <div className="mb-12 md:mb-16">
               <h1 className="text-[3.6rem] md:text-[4.8rem] font-bold text-black mb-3">
-                Willkommen, {profile?.full_name || "Kunde"}!
+                Willkommen, {guessedName || profile?.full_name || "Kunde"}!
               </h1>
               <p className="text-[1.6rem] md:text-[1.8rem] text-gray-600">
                 Kundennummer: {profile?.account_number || "Wird geladen..."}

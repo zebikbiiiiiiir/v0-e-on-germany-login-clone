@@ -1,19 +1,22 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
-    const { banType, banValue } = await request.json()
+    const { ipAddress } = await request.json()
 
-    const supabase = createAdminClient()
+    if (!ipAddress) {
+      return NextResponse.json({ error: "IP address is required" }, { status: 400 })
+    }
 
-    const { error } = await supabase
-      .from("banned_entities")
-      .update({ is_active: false })
-      .eq("ban_type", banType)
-      .eq("ban_value", banValue)
+    const supabase = await createClient()
 
-    if (error) throw error
+    const { error } = await supabase.from("banned_ips").update({ is_active: false }).eq("ip_address", ipAddress)
+
+    if (error) {
+      console.error("[v0] Unban error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

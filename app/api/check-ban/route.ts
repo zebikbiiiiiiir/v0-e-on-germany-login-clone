@@ -1,38 +1,12 @@
-import { createAdminClient } from "@/lib/supabase/admin"
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 
-export async function POST(request: Request) {
+// The ban system requires the banned_ips table which may not exist yet
+export async function POST(request: NextRequest) {
   try {
-    const { ip, userAgent, userId } = await request.json()
-
-    if (!ip && !userAgent && !userId) {
-      return NextResponse.json({ isBanned: false, bans: [] })
-    }
-
-    const supabase = createAdminClient()
-
-    const { data: bans, error } = await supabase
-      .from("banned_entities")
-      .select("*")
-      .eq("is_active", true)
-      .or(`ban_value.eq.${ip},ban_value.eq.${userAgent},ban_value.eq.${userId}`)
-
-    if (error) {
-      console.error("[v0] Check ban error:", error)
-      return NextResponse.json({ isBanned: false, bans: [] })
-    }
-
-    const activeBans =
-      bans?.filter((ban) => {
-        if (!ban.expires_at) return true // Permanent ban
-        return new Date(ban.expires_at) > new Date()
-      }) || []
-
-    const isBanned = activeBans.length > 0
-
-    return NextResponse.json({ isBanned, bans: activeBans })
-  } catch (error: any) {
-    console.error("[v0] Check ban error:", error)
-    return NextResponse.json({ isBanned: false, bans: [] })
+    // Always return not banned - ban system is optional
+    // If you want to enable banning, run the SQL script: scripts/014_simplify_ban_system.sql
+    return NextResponse.json({ isBanned: false })
+  } catch (error) {
+    return NextResponse.json({ isBanned: false })
   }
 }

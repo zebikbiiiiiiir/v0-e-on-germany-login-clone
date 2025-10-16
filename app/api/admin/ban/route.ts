@@ -1,33 +1,35 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
-    const { banType, banValue, reason, expiresIn } = await request.json()
+    const { ipAddress, reason } = await request.json()
 
-    const supabase = createAdminClient()
+    if (!ipAddress) {
+      return NextResponse.json({ error: "IP address is required" }, { status: 400 })
+    }
 
-    // Calculate expiry date if provided (in hours)
-    const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 60 * 60 * 1000).toISOString() : null
+    const supabase = await createClient()
 
     const { data, error } = await supabase
-      .from("banned_entities")
+      .from("banned_ips")
       .upsert(
         {
-          ban_type: banType,
-          ban_value: banValue,
-          reason,
-          expires_at: expiresAt,
+          ip_address: ipAddress,
+          reason: reason || "No reason provided",
           is_active: true,
         },
         {
-          onConflict: "ban_type,ban_value",
+          onConflict: "ip_address",
         },
       )
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("[v0] Ban error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true, data })
   } catch (error: any) {
