@@ -21,10 +21,9 @@ export async function detectIPInfo(ip?: string): Promise<IPData | null> {
     const apiKey = process.env.IP_API_PRO_KEY || "OAquhK3HcHWHEND"
     const targetIP = ip || ""
 
-    // Skip IP detection for local/private IPs
     if (
       !targetIP ||
-      targetIP === "unknown" ||
+      targetIP.toLowerCase() === "unknown" ||
       targetIP.startsWith("127.") ||
       targetIP.startsWith("192.168.") ||
       targetIP.startsWith("10.") ||

