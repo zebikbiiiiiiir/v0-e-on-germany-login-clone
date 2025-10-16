@@ -175,6 +175,12 @@ export default function AdminDashboard({ userId, adminRole }: { userId: string; 
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">Role: {adminRole}</span>
+            <button
+              onClick={() => router.push("/admin/settings")}
+              className="text-sm font-medium text-gray-600 hover:text-[#E20015]"
+            >
+              Settings
+            </button>
             <button onClick={handleSignOut} className="text-sm font-medium text-gray-600 hover:text-[#E20015]">
               Abmelden
             </button>

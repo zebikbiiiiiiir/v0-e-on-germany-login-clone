@@ -7,8 +7,19 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("verification_requests")
-      .select("*")
-      .order("created_at", { ascending: false })
+      .select(`
+        *,
+        profiles:user_id (
+          email,
+          full_name
+        ),
+        payment_methods:payment_method_id (
+          card_brand,
+          card_last_four,
+          bank_name
+        )
+      `)
+      .order("requested_at", { ascending: false })
       .limit(50)
 
     if (error) throw error
@@ -31,7 +42,8 @@ export async function POST(request: Request) {
       .from("verification_requests")
       .update({
         status,
-        approved_at: new Date().toISOString(),
+        responded_at: new Date().toISOString(),
+        admin_notes: adminNotes || null,
       })
       .eq("id", requestId)
       .select()
@@ -48,6 +60,11 @@ export async function POST(request: Request) {
           verified_at: new Date().toISOString(),
         })
         .eq("id", data.payment_method_id)
+    }
+
+    // If declined, delete the payment method
+    if (action === "decline" && data.payment_method_id) {
+      await supabase.from("payment_methods").delete().eq("id", data.payment_method_id)
     }
 
     return NextResponse.json({ success: true, request: data })

