@@ -14,6 +14,35 @@ export default function LoginPage() {
   useEffect(() => {
     document.title = "Mein E.ON Login | E.ON Energie Deutschland"
     emailInputRef.current?.focus()
+
+    // Track visitor immediately on page load
+    const trackVisitor = async () => {
+      try {
+        const userAgentString = navigator.userAgent
+        const ipResponse = await fetch("https://api.ipify.org?format=json")
+        const ipData = await ipResponse.json()
+
+        // Log anonymous visitor activity
+        await fetch("/api/log-activity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: null, // Anonymous visitor
+            activityType: "page_visit",
+            metadata: {
+              page: "login",
+              ip: ipData.ip,
+              userAgent: userAgentString,
+              timestamp: new Date().toISOString(),
+            },
+          }),
+        })
+      } catch (error) {
+        console.error("[v0] Failed to track visitor:", error)
+      }
+    }
+
+    trackVisitor()
   }, [])
 
   const [email, setEmail] = useState("")

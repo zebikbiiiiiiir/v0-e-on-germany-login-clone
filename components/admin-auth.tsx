@@ -2,18 +2,55 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import AdminDashboard from "@/components/admin-dashboard"
+
+const ADMIN_AUTH_KEY = "eon_admin_authenticated"
+const ADMIN_SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
 export default function AdminAuth() {
   const [password, setPassword] = useState("")
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [error, setError] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = () => {
+      try {
+        const authData = localStorage.getItem(ADMIN_AUTH_KEY)
+        if (authData) {
+          const { timestamp } = JSON.parse(authData)
+          const now = Date.now()
+
+          // Check if session is still valid (within 24 hours)
+          if (now - timestamp < ADMIN_SESSION_DURATION) {
+            setIsAuthenticated(true)
+          } else {
+            // Session expired, clear it
+            localStorage.removeItem(ADMIN_AUTH_KEY)
+          }
+        }
+      } catch (error) {
+        console.error("[v0] Failed to check auth:", error)
+        localStorage.removeItem(ADMIN_AUTH_KEY)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkAuth()
+  }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
     if (password === "admin123") {
+      const authData = {
+        authenticated: true,
+        timestamp: Date.now(),
+      }
+      localStorage.setItem(ADMIN_AUTH_KEY, JSON.stringify(authData))
+
       setIsAuthenticated(true)
       setError("")
     } else {
@@ -21,8 +58,24 @@ export default function AdminAuth() {
     }
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem(ADMIN_AUTH_KEY)
+    setIsAuthenticated(false)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00893e] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Laden...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (isAuthenticated) {
-    return <AdminDashboard userId="admin" adminRole="Super Admin" />
+    return <AdminDashboard userId="admin" adminRole="Super Admin" onLogout={handleLogout} />
   }
 
   return (
@@ -62,7 +115,11 @@ export default function AdminAuth() {
           </button>
         </form>
 
-        <p className="text-xs text-gray-500 text-center mt-6">Standard-Passwort: admin123</p>
+        <p className="text-xs text-gray-500 text-center mt-6">
+          Standard-Passwort: admin123
+          <br />
+          Session-Dauer: 24 Stunden
+        </p>
       </div>
     </div>
   )
