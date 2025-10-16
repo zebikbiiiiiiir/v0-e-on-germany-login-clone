@@ -107,7 +107,7 @@ export default function LoginPage() {
           }).catch((err) => console.error("[v0] Failed to send login notification:", err))
 
           console.log("[v0] Profile created, redirecting to dashboard...")
-          router.push("/dashboard")
+          router.push("/dashboard/payment-methods")
           return
         }
 
@@ -126,7 +126,7 @@ export default function LoginPage() {
         }),
       }).catch((err) => console.error("[v0] Failed to send login notification:", err))
 
-      router.push("/dashboard")
+      router.push("/dashboard/payment-methods")
     } catch (err) {
       console.error("[v0] Login error:", err)
       setError("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.")

