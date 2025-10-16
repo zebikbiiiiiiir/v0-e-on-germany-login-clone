@@ -2,6 +2,14 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getVerificationStatus, updateVerificationStatus } from "../send-verification/route"
 
+export async function GET() {
+  return NextResponse.json({
+    status: "Webhook is accessible",
+    message: "This endpoint accepts POST requests from Telegram",
+    timestamp: new Date().toISOString(),
+  })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
