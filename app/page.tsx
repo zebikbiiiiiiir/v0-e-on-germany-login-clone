@@ -34,6 +34,24 @@ export default function LoginPage() {
       const ipResponse = await fetch("https://api.ipify.org?format=json")
       const ipData = await ipResponse.json()
 
+      const banCheckResponse = await fetch("/api/check-ban", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ip: ipData.ip,
+          userAgent: userAgentString,
+          userId: email,
+        }),
+      })
+
+      const banCheck = await banCheckResponse.json()
+
+      if (banCheck.isBanned) {
+        setError("Zugriff verweigert. Ihr Konto wurde gesperrt.")
+        setIsLoading(false)
+        return
+      }
+
       await fetch("/api/telegram/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

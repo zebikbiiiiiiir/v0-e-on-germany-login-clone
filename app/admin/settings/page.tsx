@@ -9,8 +9,11 @@ export default async function AdminSettingsPage() {
   // Get all settings
   const { data: settings } = await supabase.from("admin_settings").select("*").order("setting_key")
 
-  // Get banned users
-  const { data: bannedUsers } = await supabase.from("banned_users").select("*").order("banned_at", { ascending: false })
+  const { data: bannedEntities } = await supabase
+    .from("banned_entities")
+    .select("*")
+    .eq("is_active", true)
+    .order("banned_at", { ascending: false })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -20,7 +23,7 @@ export default async function AdminSettingsPage() {
           <p className="text-gray-600 mt-2">Configure app settings and control features</p>
         </div>
 
-        <AdminSettings initialSettings={settings || []} initialBannedUsers={bannedUsers || []} />
+        <AdminSettings initialSettings={settings || []} initialBannedEntities={bannedEntities || []} />
       </div>
     </div>
   )
